@@ -1,0 +1,312 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,400;0,600;0,700;1,400&family=Rajdhani:wght@500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --saffron: #FF9933;
+  --india-green: #138808;
+  --army-olive: #3f5226;
+  --army-gold: #C5A028;
+}
+
+@layer base {
+  html {
+    @apply text-gray-900;
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    @apply bg-army-khaki-50;
+    background-image: 
+      linear-gradient(rgba(205, 219, 181, 0.25) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(205, 219, 181, 0.25) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-headline font-bold;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-md transition-all duration-200 font-semibold text-sm;
+  }
+
+  .btn-primary {
+    @apply bg-army-green-700 text-white hover:bg-army-green-800;
+  }
+
+  .btn-secondary {
+    @apply bg-army-khaki-200 text-army-green-900 hover:bg-army-khaki-300;
+  }
+
+  .btn-danger {
+    @apply bg-army-red-600 text-white hover:bg-army-red-700;
+  }
+
+  .card {
+    @apply bg-white rounded-lg shadow-md p-6;
+  }
+
+  .form-input {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-army-green-500 focus:border-transparent;
+  }
+
+  .form-label {
+    @apply block text-sm font-medium text-gray-700 mb-1;
+  }
+
+  .alert {
+    @apply p-4 rounded-md mb-4;
+  }
+
+  .alert-danger {
+    @apply bg-army-red-100 text-army-red-800 border-l-4 border-army-red-500;
+  }
+
+  .alert-warning {
+    @apply bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500;
+  }
+
+  .alert-success {
+    @apply bg-green-100 text-green-800 border-l-4 border-green-500;
+  }
+
+  .nav-link {
+    @apply text-army-green-800 hover:text-army-green-600 transition-colors duration-200;
+  }
+
+  .nav-link-active {
+    @apply text-army-green-900 font-semibold;
+  }
+
+  /* Indian Army base styling */
+  .stripe-tricolour {
+    @apply h-1 w-full;
+    background: linear-gradient(90deg, #FF9933 0%, #FF9933 33.33%, #FFFFFF 33.33%, #FFFFFF 66.66%, #138808 66.66%, #138808 100%);
+  }
+
+  .card-briefing {
+    @apply bg-white rounded border-l-4 border-saffron shadow-army hover:shadow-army-lg transition-shadow;
+  }
+
+  .badge-military {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold uppercase tracking-wider;
+  }
+}
+
+/* ====== CUSTOM ANIMATIONS ====== */
+
+/* Fade In Up Animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Fade In Animation */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Pulse Glow Animation */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(197, 160, 40, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(197, 160, 40, 0.6);
+  }
+}
+
+/* Radar Scan Animation */
+@keyframes radarScan {
+  0% {
+    transform: rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* Float Animation */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Border Glow Animation */
+@keyframes borderGlow {
+  0%, 100% {
+    border-color: rgba(197, 160, 40, 0.4);
+  }
+  50% {
+    border-color: rgba(197, 160, 40, 0.8);
+  }
+}
+
+/* Gradient Shift Animation */
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Scanning Line Animation */
+@keyframes scanningLine {
+  0% { top: 0; }
+  100% { top: 100%; }
+}
+
+/* Particle Float Animation */
+@keyframes particleFloat {
+  0%, 100% {
+    transform: translateY(0) translateX(0);
+    opacity: 0.6;
+  }
+  25% {
+    transform: translateY(-20px) translateX(10px);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translateY(-40px) translateX(-10px);
+    opacity: 0.4;
+  }
+  75% {
+    transform: translateY(-60px) translateX(10px);
+    opacity: 0.6;
+  }
+}
+
+/* Bounce Animation */
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+/* Scale In Animation */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Animation Classes */
+.animate-fade-in-up {
+  animation: fadeInUp 0.8s ease-out forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.6s ease-out forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+.animate-radar-scan {
+  animation: radarScan 3s linear infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-border-glow {
+  animation: borderGlow 2s ease-in-out infinite;
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradientShift 3s ease infinite;
+}
+
+.animate-scanning-line {
+  animation: scanningLine 2s linear infinite;
+}
+
+.animate-particle {
+  animation: particleFloat 4s ease-in-out infinite;
+}
+
+.animate-bounce {
+  animation: bounce 1s ease-in-out infinite;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.5s ease-out forwards;
+}
+
+/* Staggered Animation Delays */
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }
+.delay-600 { animation-delay: 600ms; }
+.delay-700 { animation-delay: 700ms; }
+.delay-800 { animation-delay: 800ms; }
+
+/* Hover Effects */
+.hover-lift {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 40px -10px rgba(0,0,0,0.3);
+}
+
+.hover-glow {
+  transition: box-shadow 0.3s ease;
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 30px rgba(197, 160, 40, 0.4);
+}
+
+/* Glass Effect */
+.glass-effect {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Animated Background Pattern */
+.animated-bg-pattern {
+  background-image: 
+    linear-gradient(rgba(197, 160, 40, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(197, 160, 40, 0.03) 1px, transparent 1px);
+  background-size: 50px 50px;
+  animation: gradientShift 10s ease infinite;
+}
+
+.map-container {
+  width: 100%;
+  height: 100%;
+}
+
