@@ -1,14 +1,17 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Shield, Video, Camera, Settings, Bell, Upload, Play, Pause, Square } from 'lucide-react';
+import { Shield, Video, Camera, Settings, Bell, Upload, Play, Pause, Square, Thermometer, Gauge } from 'lucide-react';
 import Header from '../components/layout/Header';
 import Footer from '../components/layout/Footer';
 import { useAlerts } from '../contexts/AlertContext';
 import { useAuth } from '../contexts/AuthContext';
+import { BorderIncident, DetectionLabel, DetectionType } from '../types';
 
 const SurveillancePage: React.FC = () => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const deviceLocation = useRef<{lat: number, lng: number} | null>(null);
+    const isDetectingRef = useRef(false);   // prevents overlapping fetch calls
+    const avgConfidence = useRef(0);        // rolling average confidence
 
     useEffect(() => {
         if ("geolocation" in navigator) {
@@ -34,17 +37,49 @@ const SurveillancePage: React.FC = () => {
     const [videoSourceUrl, setVideoSourceUrl] = useState<string | null>(null);
     const [objectCounts, setObjectCounts] = useState<Record<string, number>>({});
     const [isLive, setIsLive] = useState(true);
+    const [thermalMode, setThermalMode] = useState(false);
+    const [fps, setFps] = useState(0);
     const [adminReports, setAdminReports] = useState<any[]>([]);
     const [sessionStats, setSessionStats] = useState({ total_people: 0, total_vehicles: 0 });
     const lastEmailTime = useRef(0);
-    const { addAlert } = useAlerts();
+    const lastFrameTime = useRef(performance.now());
+    const { createIncident } = useAlerts();
     const { user } = useAuth();
 
-    // Check if backend is alive
+    const mapDetection = (label: string): { objectType: DetectionLabel; type: DetectionType; severity: BorderIncident['severity'] } => {
+        if (label === 'person') return { objectType: 'Person', type: 'person', severity: 'high' };
+        if (['car', 'truck', 'bus'].includes(label)) return { objectType: 'Car', type: 'vehicle', severity: 'high' };
+        if (['motorcycle', 'bicycle', 'bike'].includes(label)) return { objectType: 'Bike', type: 'vehicle', severity: 'medium' };
+        if (label === 'drone') return { objectType: 'Drone', type: 'drone', severity: 'critical' };
+        if (label === 'animal') return { objectType: 'Animal', type: 'unknown', severity: 'low' };
+        return { objectType: 'Unknown Object', type: 'unknown', severity: 'medium' };
+    };
+
+    const createDetectionIncident = async (label: string, confidence: number, source: BorderIncident['source']) => {
+        const detection = mapDetection(label);
+        await createIncident({
+            title: `${detection.objectType} detected by ${source === 'yolo' ? 'YOLO camera' : 'local scanner'}`,
+            description: `${detection.objectType} signature detected in Sector 7G with ${Math.round(confidence)}% confidence. Detection source: ${source?.toUpperCase()}.`,
+            location: deviceLocation.current || { lat: 32.9486, lng: 75.1042 },
+            coordinates: deviceLocation.current || { lat: 32.9486, lng: 75.1042 },
+            severity: detection.severity,
+            priority: detection.severity,
+            status: 'reported',
+            type: detection.type,
+            objectType: detection.objectType,
+            zone: 'Sector 7G',
+            aiConfidence: Math.round(confidence),
+            severityScore: Math.min(100, Math.round(confidence) + (detection.severity === 'critical' ? 10 : 0)),
+            source,
+            reportedBy: source === 'yolo' ? 'yolo-engine' : user?.id || 'local-scanner',
+        });
+    };
+
+    // Check if backend is alive via dedicated /health endpoint
     useEffect(() => {
         const checkBackend = async () => {
             try {
-                const response = await fetch('http://localhost:8000/docs'); // Simple health check
+                const response = await fetch('http://localhost:8000/health');
                 if (response.ok) setIsBackendReady(true);
             } catch (err) {
                 console.warn('Backend not detected. Make sure to run the Python server.');
@@ -52,6 +87,9 @@ const SurveillancePage: React.FC = () => {
             }
         };
         checkBackend();
+        // Re-check every 10 seconds in case backend starts later
+        const interval = setInterval(checkBackend, 10000);
+        return () => clearInterval(interval);
     }, []);
 
     // Cleanup on unmount
@@ -123,101 +161,147 @@ const SurveillancePage: React.FC = () => {
         setIsDetecting(false);
     };
 
-    const detectObjects = async () => {
-        if (videoRef.current && canvasRef.current && isDetecting) {
-            const video = videoRef.current;
-            const canvas = canvasRef.current;
-            const ctx = canvas.getContext('2d');
+    const detectObjects = () => {
+        // Guard: don't start a new cycle if one is already in flight
+        if (isDetectingRef.current) return;
+        if (!videoRef.current || !canvasRef.current || !isDetecting) return;
 
-            if (!ctx || video.paused || video.ended) {
-                return;
-            }
+        const video  = videoRef.current;
+        const canvas = canvasRef.current;
+        const ctx    = canvas.getContext('2d');
 
-            // Ensure canvas matches video dimensions
-            if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-            }
+        if (!ctx || video.paused || video.ended) return;
 
-            // Capture current frame from video
-            const offscreenCanvas = document.createElement('canvas');
-            offscreenCanvas.width = video.videoWidth;
-            offscreenCanvas.height = video.videoHeight;
-            const offscreenCtx = offscreenCanvas.getContext('2d');
-            if (!offscreenCtx) return;
-            offscreenCtx.drawImage(video, 0, 0);
+        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+            canvas.width  = video.videoWidth;
+            canvas.height = video.videoHeight;
+        }
 
-            // Convert frame to Blob
-            offscreenCanvas.toBlob(async (blob) => {
-                if (!blob) return;
+        const offscreenCanvas = document.createElement('canvas');
+        offscreenCanvas.width  = video.videoWidth;
+        offscreenCanvas.height = video.videoHeight;
+        const offscreenCtx = offscreenCanvas.getContext('2d');
+        if (!offscreenCtx) return;
+        offscreenCtx.drawImage(video, 0, 0);
 
-                const formData = new FormData();
-                formData.append('file', blob, 'frame.jpg');
+        offscreenCanvas.toBlob(async (blob) => {
+            if (!blob) return;
+            isDetectingRef.current = true;   // lock
 
-                try {
-                    // Send frame to Backend
-                    const response = await fetch('http://localhost:8000/detect', {
-                        method: 'POST',
-                        body: formData,
-                    });
+            const formData = new FormData();
+            formData.append('file', blob, 'frame.jpg');
 
-                    if (!response.ok) throw new Error('Backend error');
+            try {
+                const response = await fetch('http://localhost:8000/detect', {
+                    method: 'POST',
+                    body: formData,
+                });
 
-                    const data = await response.json();
+                if (!response.ok) throw new Error('Backend error');
+                const data = await response.json();
 
-                    if (data.counts) {
-                        setObjectCounts(data.counts);
+                if (data.counts) {
+                    setObjectCounts(data.counts);
 
-                        // Auto-send report to admin when detections occur (with cooldown)
-                        const hasDetections = Object.values(data.counts).some((count: any) => count > 0);
-                        if (hasDetections && Date.now() - lastEmailTime.current > 30000) { // 30 second cooldown
-                            lastEmailTime.current = Date.now();
-                            sendReportToAdmin();
-                            // Realtime UI updates are automatically handled by AlertContext mapping
-                        }
-                    } else {
-                        setObjectCounts({});
+                    // Compute real average confidence from predictions
+                    const preds: any[] = data.predictions || [];
+                    if (preds.length > 0) {
+                        const avg = preds.reduce((sum: number, p: any) => sum + p.score, 0) / preds.length;
+                        avgConfidence.current = Math.round(avg * 100);
                     }
 
-                    // Clear canvas
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    
-                    const predictions = data.predictions || [];
-                    
-                    predictions.forEach((prediction: any) => {
-                        const [x, y, width, height] = prediction.bbox;
-                        
-                        // Pick color based on entity type
-                        let color = '#3b82f6'; // default blue
-                        if (prediction.class === 'person') color = '#10b981'; // green person
-                        else if (['car', 'truck', 'motorcycle', 'bus'].includes(prediction.class)) color = '#ef4444'; // red vehicle
-                        else if (prediction.class === 'bicycle') color = '#f59e0b'; // orange bike
-                        
-                        ctx.strokeStyle = color;
-                        ctx.lineWidth = 2;
-                        ctx.strokeRect(x, y, width, height);
-                        
-                        // Draw Label Base
-                        ctx.fillStyle = `${color}33`; // Add 20% opacity background
-                        ctx.fillRect(x, y > 15 ? y - 15 : 0, ctx.measureText(`${prediction.class.toUpperCase()}: ${Math.round(prediction.score * 100)}%`).width + 4, 15);
-                        
-                        // Draw Text
-                        ctx.fillStyle = color;
-                        ctx.font = 'bold 10px monospace';
-                        ctx.fillText(`${prediction.class.toUpperCase()}: ${Math.round(prediction.score * 100)}%`, x + 2, y > 15 ? y - 4 : 11);
-                    });
-
-                } catch (err) {
-                    console.error('Detection error:', err);
+                    const hasDetections = Object.values(data.counts).some((c: any) => c > 0);
+                    if (hasDetections && Date.now() - lastEmailTime.current > 30000) {
+                        lastEmailTime.current = Date.now();
+                        sendReportToAdmin();
+                        const detected = Object.entries(data.counts).find(([, count]: any) => count > 0);
+                        if (detected) {
+                            await createDetectionIncident(
+                                detected[0],
+                                avgConfidence.current || Math.round((preds[0]?.score || 0.75) * 100),
+                                'yolo'
+                            );
+                        }
+                    }
+                } else {
+                    setObjectCounts({});
                 }
 
-                // Schedule next frame
-                if (isDetecting) {
-                    requestAnimationFrame(detectObjects);
-                }
-            }, 'image/jpeg', 0.6); // Lower quality for faster transport
-        }
+                // Draw bounding boxes
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                const predictions: any[] = data.predictions || [];
+                predictions.forEach((prediction: any) => {
+                    const [x, y, width, height] = prediction.bbox;
+                    let color = '#3b82f6';
+                    if (prediction.class === 'person') color = '#10b981';
+                    else if (['car', 'truck', 'motorcycle', 'bus'].includes(prediction.class)) color = '#ef4444';
+                    else if (prediction.class === 'bicycle') color = '#f59e0b';
+
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth   = 2;
+                    ctx.strokeRect(x, y, width, height);
+
+                    const label = `${prediction.class.toUpperCase()}: ${Math.round(prediction.score * 100)}%`;
+                    const labelWidth = ctx.measureText(label).width + 6;
+                    ctx.fillStyle = `${color}55`;
+                    ctx.fillRect(x, y > 16 ? y - 16 : 0, labelWidth, 16);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 10px monospace';
+                    ctx.fillText(label, x + 3, y > 16 ? y - 4 : 12);
+                });
+
+                const now = performance.now();
+                setFps(Math.round(1000 / Math.max(1, now - lastFrameTime.current)));
+                lastFrameTime.current = now;
+
+            } catch (err) {
+                console.error('Detection error:', err);
+            } finally {
+                isDetectingRef.current = false;  // release lock
+                // Schedule next frame only after current one finishes
+                if (isDetecting) requestAnimationFrame(detectObjects);
+            }
+        }, 'image/jpeg', 0.6);
     };
+
+    useEffect(() => {
+        if (!isDetecting || isBackendReady) return undefined;
+        const labels = ['Person', 'Car', 'Bike', 'Drone', 'Animal'];
+        const interval = window.setInterval(() => {
+            const video = videoRef.current;
+            const canvas = canvasRef.current;
+            const ctx = canvas?.getContext('2d');
+            if (!video || !canvas || !ctx || video.paused || video.ended) return;
+
+            canvas.width = video.videoWidth || canvas.clientWidth || 1280;
+            canvas.height = video.videoHeight || canvas.clientHeight || 720;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const label = labels[Math.floor(Math.random() * labels.length)];
+            const confidence = Math.round(68 + Math.random() * 29);
+            const width = 120 + Math.random() * 140;
+            const height = 70 + Math.random() * 120;
+            const x = Math.random() * Math.max(1, canvas.width - width);
+            const y = Math.random() * Math.max(1, canvas.height - height);
+            const color = label === 'Drone' ? '#dc2626' : label === 'Person' ? '#22c55e' : '#f59e0b';
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, width, height);
+            ctx.fillStyle = `${color}cc`;
+            ctx.fillRect(x, Math.max(0, y - 22), 170, 22);
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 13px monospace';
+            ctx.fillText(`${label.toUpperCase()} ${confidence}%`, x + 8, Math.max(16, y - 6));
+            setObjectCounts({ [label.toLowerCase()]: 1 });
+            setFps(24 + Math.floor(Math.random() * 8));
+
+            if (Date.now() - lastEmailTime.current > 30000) {
+                lastEmailTime.current = Date.now();
+                createDetectionIncident(label.toLowerCase(), confidence, 'simulation').catch(() => undefined);
+            }
+        }, 1200);
+        return () => window.clearInterval(interval);
+    }, [isBackendReady, isDetecting]);
 
     useEffect(() => {
         if (isDetecting && isBackendReady) {
@@ -314,7 +398,6 @@ const SurveillancePage: React.FC = () => {
                                             <div className="flex flex-col sm:flex-row gap-4 justify-center">
                                                 <button
                                                     onClick={startCamera}
-                                                    disabled={!isBackendReady}
                                                     className="btn btn-primary flex items-center justify-center space-x-2 px-6"
                                                 >
                                                     <Camera className="h-4 w-4" />
@@ -323,7 +406,6 @@ const SurveillancePage: React.FC = () => {
 
                                                 <button
                                                     onClick={() => fileInputRef.current?.click()}
-                                                    disabled={!isBackendReady}
                                                     className="btn btn-secondary flex items-center justify-center space-x-2 px-6"
                                                 >
                                                     <Upload className="h-4 w-4" />
@@ -344,7 +426,7 @@ const SurveillancePage: React.FC = () => {
                                                     <div className="p-4 bg-army-red-900/40 rounded border border-army-red-500/50">
                                                         <p className="text-xs text-red-400 font-mono text-center">
                                                             OFFLINE: BACKEND AI SERVER NOT DETECTED<br />
-                                                            <span className="text-[10px] opacity-70">Run `python backend/main.py` to start the YOLO engine</span>
+                                                            <span className="text-[10px] opacity-70">Camera still works with local simulated detection. Run `python backend/main.py` for YOLO.</span>
                                                         </p>
                                                     </div>
                                                 </div>
@@ -363,12 +445,25 @@ const SurveillancePage: React.FC = () => {
                                                 detectObjects();
                                             }
                                         }}
-                                        className={`w-full h-full object-contain ${(!stream && !videoSourceUrl) ? 'hidden' : 'block'}`}
+                                        className={`w-full h-full object-contain ${thermalMode ? 'sepia contrast-150 hue-rotate-90 saturate-200' : ''} ${(!stream && !videoSourceUrl) ? 'hidden' : 'block'}`}
                                     />
                                     <canvas
                                         ref={canvasRef}
                                         className="absolute top-0 left-0 w-full h-full object-contain pointer-events-none"
                                     />
+                                    {(stream || videoSourceUrl) && (
+                                        <>
+                                            <div className="absolute inset-0 pointer-events-none scan-line" />
+                                            <div className="absolute left-4 top-4 flex items-center gap-3 text-xs font-mono">
+                                                <span className="px-2 py-1 rounded bg-red-600 text-white font-bold flex items-center gap-1">
+                                                    <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
+                                                    REC
+                                                </span>
+                                                <span className="px-2 py-1 rounded bg-black/60 text-army-gold">{fps} FPS</span>
+                                                <span className="px-2 py-1 rounded bg-black/60 text-army-khaki-100">{isBackendReady ? 'YOLOv8' : 'SIM'}</span>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
 
                                 {(stream || videoSourceUrl) && (
@@ -400,6 +495,19 @@ const SurveillancePage: React.FC = () => {
                                                     )}
                                                 </button>
                                             )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => setThermalMode((enabled) => !enabled)}
+                                                className={`btn text-xs py-2 flex items-center ${thermalMode ? 'bg-army-gold text-army-green-950' : 'btn-secondary'}`}
+                                            >
+                                                <Thermometer className="h-3 w-3 mr-1.5" />
+                                                Thermal
+                                            </button>
+                                            <span className="hidden md:inline-flex items-center text-army-khaki-300 text-[10px] font-mono">
+                                                <Gauge className="h-3 w-3 mr-1" />
+                                                CONF AVG: {avgConfidence.current > 0 ? `${avgConfidence.current}%` : '--'}
+                                            </span>
                                         </div>
                                         <div className="text-army-khaki-300 text-[10px] font-mono flex flex-col items-end">
                                             <span>COORD: 34.0479° N, 74.8103° E</span>

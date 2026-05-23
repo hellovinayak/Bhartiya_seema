@@ -1,4 +1,3 @@
-import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { AlertProvider } from './contexts/AlertContext';
@@ -17,12 +16,15 @@ import ProfilePage from './pages/ProfilePage';
 import SurveillancePage from './pages/SurveillancePage';
 import AdminLoginPage from './pages/AdminLoginPage';
 import AdminDashboard from './pages/AdminDashboard';
+import ProtectedRoute from './routes/ProtectedRoute';
+import RealtimeToast from './components/dashboard/RealtimeToast';
 
 function App() {
   return (
     <AuthProvider>
       <AlertProvider>
         <Router>
+          <RealtimeToast />
           <Routes>
             {/* Public Routes */}
             <Route path="/" element={<HomePage />} />
@@ -30,16 +32,16 @@ function App() {
             <Route path="/signup" element={<LoginPage />} />
 
             {/* Protected Routes */}
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/incidents" element={<IncidentsPage />} />
-            <Route path="/incidents/:id" element={<IncidentDetailPage />} />
-            <Route path="/incidents/new" element={<NewIncidentPage />} />
-            <Route path="/map" element={<MapPage />} />
-            <Route path="/alerts" element={<AlertsPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/surveillance" element={<SurveillancePage />} />
+            <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+            <Route path="/incidents" element={<ProtectedRoute><IncidentsPage /></ProtectedRoute>} />
+            <Route path="/incidents/:id" element={<ProtectedRoute><IncidentDetailPage /></ProtectedRoute>} />
+            <Route path="/incidents/new" element={<ProtectedRoute><NewIncidentPage /></ProtectedRoute>} />
+            <Route path="/map" element={<ProtectedRoute><MapPage /></ProtectedRoute>} />
+            <Route path="/alerts" element={<ProtectedRoute><AlertsPage /></ProtectedRoute>} />
+            <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+            <Route path="/surveillance" element={<ProtectedRoute><SurveillancePage /></ProtectedRoute>} />
             <Route path="/admin/login" element={<AdminLoginPage />} />
-            <Route path="/admin/dashboard" element={<AdminDashboard />} />
+            <Route path="/admin/dashboard" element={<ProtectedRoute roles={['admin', 'commander']}><AdminDashboard /></ProtectedRoute>} />
 
             {/* Fallback Route */}
             <Route path="*" element={<Navigate to="/" replace />} />

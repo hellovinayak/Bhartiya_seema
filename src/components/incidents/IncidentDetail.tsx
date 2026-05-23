@@ -3,6 +3,7 @@ import { BorderIncident } from '../../types';
 import { format } from 'date-fns';
 import { User, Clock, MapPin, Target, CheckCircle2, AlertOctagon } from 'lucide-react';
 import { mockUsers } from '../../data/mockData';
+import { MapContainer, Marker, TileLayer, Circle } from 'react-leaflet';
 
 interface IncidentDetailProps {
   incident: BorderIncident;
@@ -115,9 +116,57 @@ const IncidentDetail: React.FC<IncidentDetailProps> = ({ incident, onAddUpdate }
                 <User className="h-4 w-4 mr-2 text-army-green-700" />
                 <span className="text-gray-700">Assigned to: {getAssigneeName(incident.assignedTo)}</span>
               </li>
+              <li className="flex items-center">
+                <Target className="h-4 w-4 mr-2 text-army-green-700" />
+                <span className="text-gray-700">Object: {incident.objectType || incident.type || 'Unknown'} · Confidence: {incident.aiConfidence || 0}%</span>
+              </li>
+              <li className="flex items-center">
+                <AlertOctagon className="h-4 w-4 mr-2 text-army-green-700" />
+                <span className="text-gray-700">Severity Score: {incident.severityScore || 0}/100 · Zone: {incident.zone || 'Unassigned'}</span>
+              </li>
             </ul>
           </div>
+
+          <div className="bg-gray-50 p-4 rounded-md">
+            <h3 className="text-sm font-semibold uppercase text-gray-500 mb-3">Map Location</h3>
+            {incident.location ? (
+              <div className="h-64 rounded overflow-hidden border">
+                <MapContainer center={[incident.location.lat, incident.location.lng]} zoom={13} className="h-full w-full">
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <Circle
+                    center={[incident.location.lat, incident.location.lng]}
+                    radius={600}
+                    pathOptions={{ color: '#dc2626', fillColor: '#dc2626', fillOpacity: 0.16 }}
+                  />
+                  <Marker position={[incident.location.lat, incident.location.lng]} />
+                </MapContainer>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No coordinates attached.</p>
+            )}
+          </div>
         </div>
+
+        {incident.media && incident.media.length > 0 && (
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-3">Uploaded Evidence</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {incident.media.map((media) => (
+                <div key={media.id} className="border rounded-lg overflow-hidden bg-gray-50">
+                  {media.type === 'image' ? (
+                    <img src={media.url} alt={media.caption || 'Incident evidence'} className="w-full h-48 object-cover" />
+                  ) : (
+                    <video src={media.url} controls className="w-full h-48 object-cover" />
+                  )}
+                  <div className="p-3 text-xs text-gray-600">{media.caption || 'Uploaded media'} · {format(new Date(media.timestamp), 'PPp')}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         
         <div className="flex flex-col md:flex-row gap-3 mb-8">
           <button 

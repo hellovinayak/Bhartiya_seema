@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import Header from '../components/layout/Header';
 import Footer from '../components/layout/Footer';
 import NewIncidentForm from '../components/incidents/NewIncidentForm';
 import { useAuth } from '../contexts/AuthContext';
+import { useAlerts } from '../contexts/AlertContext';
 import { BorderIncident, GeoLocation } from '../types';
-import { mockIncidents } from '../data/mockData';
 
 interface NewIncidentFormData {
   title: string;
@@ -17,14 +17,10 @@ interface NewIncidentFormData {
 }
 
 const NewIncidentPage: React.FC = () => {
-  const { user, isAuthenticated } = useAuth();
+  const { user } = useAuth();
+  const { createIncident } = useAlerts();
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
-  
-  // If not authenticated, redirect to login
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
   
   const handleBack = () => {
     navigate('/incidents');
@@ -37,18 +33,21 @@ const NewIncidentPage: React.FC = () => {
     
     // Simulate API call to create a new incident
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // In a real app, we would make an API call to create the incident in the database
-      const newIncident: BorderIncident = {
-        id: `i${mockIncidents.length + 1}`,
+      await createIncident({
         title: formData.title,
         description: formData.description,
         location: formData.location,
+        coordinates: formData.location,
         severity: formData.severity,
+        priority: formData.severity,
         status: 'reported',
-        reportedAt: new Date().toISOString(),
         reportedBy: user.id,
+        objectType: 'Unknown Object',
+        type: 'unknown',
+        zone: 'Manual Report',
+        source: 'manual',
+        aiConfidence: 0,
+        severityScore: formData.severity === 'critical' ? 95 : formData.severity === 'high' ? 78 : formData.severity === 'medium' ? 52 : 24,
         media: formData.media?.map((media, index) => ({
           id: `m${Date.now() + index}`,
           type: media.type,
@@ -57,13 +56,11 @@ const NewIncidentPage: React.FC = () => {
           timestamp: new Date().toISOString()
         })),
         updates: []
-      };
+      });
       
-      // Navigate to the incidents page with a success message
       navigate('/incidents', { state: { success: true, message: 'Incident reported successfully' } });
     } catch (error) {
       console.error('Error creating incident:', error);
-      // In a real app, we would handle the error and show a message to the user
     } finally {
       setSubmitting(false);
     }

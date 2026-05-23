@@ -175,9 +175,9 @@ const LoginForm: React.FC = () => {
           <p>
             For demonstration purposes, you can use:
             <br />
-            Email: <span className="font-mono">vinayak.rathod@example.com</span>
+            Email: <span className="font-mono">Vinayak.rathod@gmail.com</span>
             <br />
-            Password: <span className="font-mono">any password</span>
+            Password: <span className="font-mono">vinayak</span>
           </p>
         </div>
       </form>

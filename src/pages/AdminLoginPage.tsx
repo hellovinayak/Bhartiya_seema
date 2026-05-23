@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Lock, User, ArrowRight } from 'lucide-react';
+import { Shield, Lock, User, ArrowRight, ArrowLeft } from 'lucide-react';
 import Header from '../components/layout/Header';
 import Footer from '../components/layout/Footer';
+import { useAuth } from '../contexts/AuthContext';
 
 const AdminLoginPage: React.FC = () => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const navigate = useNavigate();
+    const { login } = useAuth();
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -21,6 +23,7 @@ const AdminLoginPage: React.FC = () => {
             const data = await response.json();
             if (data.status === 'success') {
                 localStorage.setItem('adminToken', data.token);
+                await login(username, password);
                 navigate('/admin/dashboard');
             } else {
                 setError(data.message);
@@ -38,6 +41,15 @@ const AdminLoginPage: React.FC = () => {
                 style={{ backgroundImage: "url('/custom-army.jpg')" }}
             >
                 <div className="absolute inset-0 bg-army-green-900 bg-opacity-70"></div>
+                <button
+                    type="button"
+                    onClick={() => navigate('/login')}
+                    className="absolute left-4 top-4 z-20 inline-flex items-center gap-2 rounded-full border border-army-khaki-200/40 bg-army-green-900/60 px-4 py-2 text-xs font-bold uppercase tracking-widest text-army-khaki-100 transition-colors hover:bg-army-green-900 hover:text-army-gold focus:outline-none focus:ring-2 focus:ring-army-gold"
+                    aria-label="Back to login page"
+                >
+                    <ArrowLeft className="h-4 w-4" />
+                    <span>Back</span>
+                </button>
                 <div className="relative z-10 max-w-md w-full bg-white rounded-xl shadow-army border-b-8 border-army-green-700 overflow-hidden">
                     <div className="bg-army-green-800 p-8 text-center relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-4 opacity-10">

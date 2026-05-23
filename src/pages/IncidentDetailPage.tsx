@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, AlertTriangle } from 'lucide-react';
 import Header from '../components/layout/Header';
 import Footer from '../components/layout/Footer';
@@ -10,8 +10,8 @@ import { BorderIncident, IncidentUpdate } from '../types';
 
 const IncidentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { user, isAuthenticated } = useAuth();
-  const { alerts, updateAlert } = useAlerts();
+  const { user } = useAuth();
+  const { incidents, getIncidentDetails, updateIncident: saveIncidentUpdate } = useAlerts();
   const navigate = useNavigate();
   
   const [incident, setIncident] = useState<BorderIncident | null>(null);
@@ -20,32 +20,16 @@ const IncidentDetailPage: React.FC = () => {
   
   useEffect(() => {
     setLoading(true);
-    const alert = alerts.find(a => a.id === id);
+    const foundIncident = id ? getIncidentDetails(id) || incidents.find((item) => item.id === id) : undefined;
     
-    if (alert) {
-      const mappedIncident: BorderIncident = {
-        id: alert.id,
-        title: alert.title,
-        description: alert.message,
-        severity: alert.severity,
-        status: (alert.status as BorderIncident['status']) || 'reported',
-        reportedAt: alert.timestamp,
-        reportedBy: 'YOLO System',
-        location: alert.location || { lat: 34.0479, lng: 74.8103 },
-        updates: alert.updates || []
-      };
-      setIncident(mappedIncident);
+    if (foundIncident) {
+      setIncident(foundIncident);
       setError(null);
     } else {
-      if (alerts.length > 0) setError('Incident not found');
+      if (incidents.length > 0) setError('Incident not found');
     }
     setLoading(false);
-  }, [id, alerts]);
-  
-  // If not authenticated, redirect to login
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
+  }, [getIncidentDetails, id, incidents]);
   
   const handleBack = () => {
     navigate('/incidents');
@@ -74,9 +58,7 @@ const IncidentDetailPage: React.FC = () => {
     });
     
     // Call Supabase API
-    if (updateAlert) {
-      await updateAlert(incident.id, newUpdates, newStatus);
-    }
+    await saveIncidentUpdate(incident.id, { updates: newUpdates, status: newStatus });
   };
   
   if (loading) {

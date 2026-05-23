@@ -1,176 +1,158 @@
-import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
-import { Alert, BorderIncident, User } from '../types';
-import { mockIncidents } from '../data/mockData';
-import { useAuth } from './AuthContext';
-import { supabase } from '../lib/supabase';
+import React, { createContext, ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityLog, Alert, BorderIncident, BorderZone, Camera, User } from '../types';
+import {
+  addOfficerResponse,
+  clearAllAlerts,
+  createAlert,
+  createIncident,
+  deleteIncident,
+  markAlertRead,
+  onActivityLogs,
+  onAlerts,
+  onCameras,
+  onIncidents,
+  onSectors,
+  onUsers,
+  updateIncident,
+} from '../services/firestoreService';
+import { createSimulatedIncidentPayload, playAlertTone } from '../services/simulationService';
+import { isFirebaseConfigured } from '../firebase/firebase';
 
 interface AlertContextType {
   alerts: Alert[];
+  incidents: BorderIncident[];
+  sectors: BorderZone[];
+  cameras: Camera[];
+  officers: User[];
+  activityLogs: ActivityLog[];
   unreadCount: number;
+  loading: boolean;
+  error: string | null;
+  simulationEnabled: boolean;
+  soundEnabled: boolean;
   markAsRead: (alertId: string) => void;
   markAllAsRead: () => void;
   getProximityAlerts: (user: User) => Alert[];
   getIncidentDetails: (incidentId: string) => BorderIncident | undefined;
-  addAlert: (alert: Omit<Alert, 'id' | 'timestamp' | 'read'>) => void;
+  addAlert: (alert: Omit<Alert, 'id' | 'timestamp' | 'read'>) => Promise<void>;
   clearAlerts: () => Promise<void>;
   updateAlert: (id: string, updates: any[], status: string) => Promise<void>;
+  createIncident: (incident: Partial<BorderIncident>) => Promise<BorderIncident>;
+  updateIncident: (id: string, updates: Partial<BorderIncident>) => Promise<void>;
+  deleteIncident: (id: string) => Promise<void>;
+  createSimulatedDetection: () => Promise<BorderIncident>;
+  addOfficerResponse: typeof addOfficerResponse;
+  retry: () => void;
+  toggleSimulation: () => void;
+  toggleSound: () => void;
 }
 
 const AlertContext = createContext<AlertContextType | undefined>(undefined);
 
 export const AlertProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  // Auth might not be present in admin dashboard, but context works
+  const [incidents, setIncidents] = useState<BorderIncident[]>([]);
+  const [sectors, setSectors] = useState<BorderZone[]>([]);
+  const [cameras, setCameras] = useState<Camera[]>([]);
+  const [officers, setOfficers] = useState<User[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+  const [simulationEnabled, setSimulationEnabled] = useState(() => !isFirebaseConfigured);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const lastAlertId = useRef<string | null>(null);
 
-  // Fetch initial alerts from Supabase
   useEffect(() => {
-    const fetchAlerts = async () => {
-      const { data, error } = await supabase
-        .from('alerts')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
-        
-      if (error) {
-        console.error('Error fetching alerts:', error);
-      } else if (data) {
-        const mappedAlerts: Alert[] = data.map((row: any) => ({
-          id: row.id,
-          incidentId: row.id,
-          title: row.title,
-          message: row.description,
-          severity: row.priority as any || 'medium',
-          timestamp: row.created_at,
-          read: false,
-          detected_class: row.detected_class,
-          detected_count: row.detected_count,
-          location: (row.lat && row.lng) ? { lat: row.lat, lng: row.lng } : undefined,
-          status: row.status,
-          updates: row.updates || []
-        }));
-        setAlerts(mappedAlerts);
-      }
+    setLoading(true);
+    setError(null);
+    const handleError = (err: Error) => {
+      setError(err.message);
+      setLoading(false);
     };
-    
-    fetchAlerts();
 
-    // Subscribe to realtime inserts
-    const subscription = supabase
-      .channel('public:alerts')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts' }, payload => {
-        if (payload.eventType === 'INSERT') {
-          const row = payload.new;
-          const newAlert: Alert = {
-            id: row.id,
-            incidentId: row.id,
-            title: row.title,
-            message: row.description,
-            severity: row.priority as any || 'medium',
-            timestamp: row.created_at,
-            read: false,
-            detected_class: row.detected_class,
-            detected_count: row.detected_count,
-            location: (row.lat && row.lng) ? { lat: row.lat, lng: row.lng } : undefined,
-            status: row.status,
-            updates: row.updates || []
-          };
-          // Overwrite or append
-          setAlerts(prev => {
-            const exists = prev.find(p => p.id === newAlert.id);
-            if (exists) {
-                return prev.map(p => p.id === newAlert.id ? newAlert : p);
-            }
-            return [newAlert, ...prev];
-          });
-        } else if (payload.eventType === 'UPDATE') {
-          const row = payload.new;
-          setAlerts(prev => prev.map(alert => {
-            if (alert.id === row.id) {
-              return {
-                ...alert,
-                status: row.status,
-                updates: row.updates || []
-              };
-            }
-            return alert;
-          }));
-        }
-      })
-      .subscribe();
+    const unsubscribers = [
+      onAlerts((items) => {
+        setAlerts(items);
+        setLoading(false);
+      }, handleError),
+      onIncidents(setIncidents, handleError),
+      onSectors(setSectors, handleError),
+      onCameras(setCameras, handleError),
+      onUsers(setOfficers, handleError),
+      onActivityLogs(setActivityLogs, handleError),
+    ];
 
-    return () => {
-      supabase.removeChannel(subscription);
-    };
-  }, []);
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, [reloadToken]);
 
-  const getProximityAlerts = (): Alert[] => {
-    // Return all alerts since we removed geofencing requirements
-    return alerts;
-  };
+  useEffect(() => {
+    const newest = alerts[0];
+    if (!newest || newest.id === lastAlertId.current) return;
+    lastAlertId.current = newest.id;
+    if (soundEnabled && !newest.read) playAlertTone();
+  }, [alerts, soundEnabled]);
 
-  const unreadCount = alerts.filter(alert => !alert.read).length;
+  useEffect(() => {
+    if (!simulationEnabled) return undefined;
+    const interval = window.setInterval(() => {
+      createIncident(createSimulatedIncidentPayload()).catch((err) => setError(err.message));
+    }, 45000);
+    return () => window.clearInterval(interval);
+  }, [simulationEnabled]);
+
+  const unreadCount = alerts.filter((alert) => !alert.read).length;
 
   const markAsRead = (alertId: string) => {
-    setAlerts(prevAlerts =>
-      prevAlerts.map(alert =>
-        alert.id === alertId ? { ...alert, read: true } : alert
-      )
-    );
+    markAlertRead(alertId).catch((err) => setError(err.message));
   };
 
   const markAllAsRead = () => {
-    setAlerts(prevAlerts =>
-      prevAlerts.map(alert => ({ ...alert, read: true }))
-    );
+    Promise.all(alerts.map((alert) => markAlertRead(alert.id))).catch((err) => setError(err.message));
   };
 
-  const getIncidentDetails = (incidentId: string): BorderIncident | undefined => {
-    return mockIncidents.find(incident => incident.id === incidentId);
-  };
+  const getProximityAlerts = (_user: User) => alerts;
 
-  const addAlert = async (alertData: Omit<Alert, 'id' | 'timestamp' | 'read'>) => {
-    const { error } = await supabase.from('alerts').insert({
-      title: alertData.title,
-      description: alertData.message,
-      priority: alertData.severity
-    });
-    if (error) {
-      console.error('Error adding alert to supabase:', error);
-    }
-  };
+  const getIncidentDetails = (incidentId: string) =>
+    incidents.find((incident) => incident.id === incidentId || incident.id === alerts.find((alert) => alert.id === incidentId)?.incidentId);
 
-  const clearAlerts = async () => {
-    const { error } = await supabase.from('alerts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    if (!error) {
-      setAlerts([]);
-    } else {
-      console.error('Error clearing alerts:', error);
-    }
-  };
+  const createSimulatedDetection = async () => createIncident(createSimulatedIncidentPayload());
 
-  const updateAlert = async (id: string, updates: any[], status: string) => {
-    const { error } = await supabase.from('alerts').update({
-        updates: updates,
-        status: status
-    }).eq('id', id);
-    
-    if (error) {
-        console.error('Failed to update alert:', error);
-    }
-  };
+  const value = useMemo<AlertContextType>(() => ({
+    alerts,
+    incidents,
+    sectors,
+    cameras,
+    officers,
+    activityLogs,
+    unreadCount,
+    loading,
+    error,
+    simulationEnabled,
+    soundEnabled,
+    markAsRead,
+    markAllAsRead,
+    getProximityAlerts,
+    getIncidentDetails,
+    addAlert: async (alert) => {
+      await createAlert(alert);
+    },
+    clearAlerts: clearAllAlerts,
+    updateAlert: async (id, updates, status) => {
+      await updateIncident(id, { updates, status: status as BorderIncident['status'] });
+    },
+    createIncident,
+    updateIncident,
+    deleteIncident,
+    createSimulatedDetection,
+    addOfficerResponse,
+    retry: () => setReloadToken((token) => token + 1),
+    toggleSimulation: () => setSimulationEnabled((enabled) => !enabled),
+    toggleSound: () => setSoundEnabled((enabled) => !enabled),
+  }), [activityLogs, alerts, cameras, error, incidents, loading, officers, sectors, simulationEnabled, soundEnabled, unreadCount]);
 
   return (
-    <AlertContext.Provider value={{
-      alerts,
-      unreadCount,
-      markAsRead,
-      markAllAsRead,
-      getProximityAlerts,
-      getIncidentDetails,
-      addAlert,
-      clearAlerts,
-      updateAlert
-    }}>
+    <AlertContext.Provider value={value}>
       {children}
     </AlertContext.Provider>
   );

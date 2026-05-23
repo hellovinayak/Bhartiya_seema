@@ -25,6 +25,7 @@ const Header: React.FC = () => {
   };
 
   const isActive = (path: string) => location.pathname === path;
+  const isAuthPage = ['/login', '/signup'].includes(location.pathname);
 
   // Navigation items with icons
   const navItems = [
@@ -96,73 +97,77 @@ const Header: React.FC = () => {
                 </div>
               </>
             ) : (
-              !(['/login', '/signup'].includes(location.pathname) || location.pathname.startsWith('/admin')) && (
+              !(isAuthPage || location.pathname.startsWith('/admin')) && (
                 <div className="hidden md:flex items-center space-x-2">
                   <Link to="/login" className="btn btn-secondary text-sm hover:scale-105 transition-transform duration-200" onClick={closeMenus}>Login</Link>
                   <Link to="/signup" className="btn btn-primary text-sm hover:scale-105 transition-transform duration-200" onClick={closeMenus}>Sign Up</Link>
                 </div>
               )
             )}
-            <button className="md:hidden focus:outline-none group" onClick={toggleMenu}>
-              {isOpen ? <X className="h-6 w-6 group-hover:rotate-90 transition-transform duration-300" /> : <Menu className="h-6 w-6 group-hover:scale-110 transition-transform duration-300" />}
-            </button>
+            {!isAuthPage && (
+              <button className="md:hidden focus:outline-none group" onClick={toggleMenu}>
+                {isOpen ? <X className="h-6 w-6 group-hover:rotate-90 transition-transform duration-300" /> : <Menu className="h-6 w-6 group-hover:scale-110 transition-transform duration-300" />}
+              </button>
+            )}
           </div>
         </div>
 
         {/* Bottom Row: Navigation - Below Logo, Left Aligned */}
-        <nav className="hidden md:flex items-center space-x-1 mt-3 pt-3 border-t border-army-green-700/50">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isItemActive = isActive(item.path);
-            let showItem = !item.requiresAuth || !!user;
-            if ((user || location.pathname.startsWith('/admin')) && item.label === 'Home') {
-              showItem = false;
-            }
+        {!isAuthPage && (
+          <nav className="hidden md:flex items-center space-x-1 mt-3 pt-3 border-t border-army-green-700/50">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isItemActive = isActive(item.path);
+              let showItem = !item.requiresAuth || !!user;
+              if ((user || location.pathname.startsWith('/admin')) && item.label === 'Home') {
+                showItem = false;
+              }
 
-            if (!showItem) return null;
+              if (!showItem) return null;
 
-            return (
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`
+                    group relative flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm
+                    transition-all duration-300 ease-out
+                    ${isItemActive 
+                      ? 'text-white bg-army-green-700' 
+                      : 'text-army-khaki-100 hover:text-white hover:bg-army-green-700/50'
+                    }
+                  `}
+                  onClick={closeMenus}
+                >
+                  <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0.5 bg-army-gold group-hover:w-full transition-all duration-300"></span>
+                  <Icon className={`h-4 w-4 ${isItemActive ? 'text-army-gold' : 'text-army-khaki-200 group-hover:text-army-gold'} transition-colors duration-300 group-hover:scale-110`} />
+                  <span className="relative z-10">{item.label}</span>
+                  {isItemActive && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-army-gold rounded-full animate-pulse"></span>}
+                </Link>
+              );
+            })}
+            {!user && !location.pathname.startsWith('/admin') && (
               <Link
-                key={item.path}
-                to={item.path}
+                to="/admin/login"
                 className={`
-                  group relative flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm
+                  group relative flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm ml-2
                   transition-all duration-300 ease-out
-                  ${isItemActive 
-                    ? 'text-white bg-army-green-700' 
-                    : 'text-army-khaki-100 hover:text-white hover:bg-army-green-700/50'
+                  ${isActive('/admin/login') || isActive('/admin/dashboard')
+                    ? 'text-army-gold bg-army-green-900' 
+                    : 'text-army-gold/80 hover:text-army-gold hover:bg-army-green-700/50'
                   }
                 `}
                 onClick={closeMenus}
               >
-                <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0.5 bg-army-gold group-hover:w-full transition-all duration-300"></span>
-                <Icon className={`h-4 w-4 ${isItemActive ? 'text-army-gold' : 'text-army-khaki-200 group-hover:text-army-gold'} transition-colors duration-300 group-hover:scale-110`} />
-                <span className="relative z-10">{item.label}</span>
-                {isItemActive && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-army-gold rounded-full animate-pulse"></span>}
+                <ShieldCheck className="h-4 w-4 group-hover:scale-110 transition-transform duration-300" />
+                <span className="relative z-10">Command Center</span>
               </Link>
-            );
-          })}
-          {!user && !location.pathname.startsWith('/admin') && (
-            <Link
-              to="/admin/login"
-              className={`
-                group relative flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm ml-2
-                transition-all duration-300 ease-out
-                ${isActive('/admin/login') || isActive('/admin/dashboard')
-                  ? 'text-army-gold bg-army-green-900' 
-                  : 'text-army-gold/80 hover:text-army-gold hover:bg-army-green-700/50'
-                }
-              `}
-              onClick={closeMenus}
-            >
-              <ShieldCheck className="h-4 w-4 group-hover:scale-110 transition-transform duration-300" />
-              <span className="relative z-10">Command Center</span>
-            </Link>
-          )}
-        </nav>
+            )}
+          </nav>
+        )}
 
         {/* Mobile Menu */}
-        {isOpen && (
+        {!isAuthPage && isOpen && (
           <div className="md:hidden pt-4 pb-3 border-t border-army-green-700 mt-3 animate-fade-in">
             <nav className="flex flex-col space-y-2">
               {navItems.map((item) => {
@@ -219,4 +224,3 @@ const Header: React.FC = () => {
 };
 
 export default Header;
-

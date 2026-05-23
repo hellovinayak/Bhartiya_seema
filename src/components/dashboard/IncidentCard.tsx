@@ -42,7 +42,10 @@ const IncidentCard: React.FC<IncidentCardProps> = ({ incident }) => {
   
   const getReporterName = (reportedBy: string) => {
     const reporter = mockUsers.find(user => user.id === reportedBy);
-    return reporter ? reporter.name : 'Unknown Officer';
+    if (reporter) return reporter.name;
+    if (reportedBy === 'simulation-engine') return 'Simulation Engine';
+    if (reportedBy === 'yolo-engine') return 'YOLO Detection Engine';
+    return 'Command System';
   };
 
   const hasUpdates = incident.updates.length > 0;
@@ -67,6 +70,10 @@ const IncidentCard: React.FC<IncidentCardProps> = ({ incident }) => {
         <p className="text-sm text-gray-600 mb-3 line-clamp-2">{incident.description}</p>
         
         <div className="flex flex-col space-y-2 text-xs text-gray-500 mb-3">
+          <div className="flex items-center">
+            <AlertTriangle className="h-3.5 w-3.5 mr-1.5" />
+            <span>Type: {incident.objectType || incident.type || 'Unknown'} · Zone: {incident.zone || 'Unassigned'}</span>
+          </div>
           {incident.location && (
             <div className="flex items-center">
               <MapPin className="h-3.5 w-3.5 mr-1.5" />
@@ -76,6 +83,10 @@ const IncidentCard: React.FC<IncidentCardProps> = ({ incident }) => {
           <div className="flex items-center">
             <User className="h-3.5 w-3.5 mr-1.5" />
             <span>Reported by: {getReporterName(incident.reportedBy)}</span>
+          </div>
+          <div className="flex items-center">
+            <User className="h-3.5 w-3.5 mr-1.5" />
+            <span>Assigned: {incident.assignedOfficer || incident.assignedTo || 'Unassigned'}</span>
           </div>
           <div className="flex items-center">
             <Clock className="h-3.5 w-3.5 mr-1.5" />

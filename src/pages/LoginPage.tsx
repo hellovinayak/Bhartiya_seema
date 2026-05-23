@@ -148,7 +148,7 @@ const AuthPage: React.FC = () => {
                     {loading ? 'Signing in...' : 'Login'}
                   </button>
                   <p className="text-xs text-center text-gray-500 mt-2">
-                    Demo: <span className="font-mono">vinayak.rathod@example.com</span> / any password
+                    Demo: <span className="font-mono">Vinayak.rathod@gmail.com</span> / <span className="font-mono">vinayak</span>
                   </p>
                 </form>
               ) : (

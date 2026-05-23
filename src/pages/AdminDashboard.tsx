@@ -5,7 +5,6 @@ import {
     Users,
     Truck,
     FileText,
-    RefreshCw,
     Download,
     LogOut,
     ChevronRight,
@@ -29,13 +28,32 @@ const AdminDashboard: React.FC = () => {
         let people = 0;
         let vehicles = 0;
         alerts.forEach(alert => {
-            const cls = (alert.detected_class || '').toLowerCase();
+            const cls   = (alert.detected_class || '').toLowerCase();
             const count = alert.detected_count || 1;
             if (cls === 'person') people += count;
             else if (['car', 'truck', 'motorcycle', 'bus', 'bicycle', 'vehicle'].includes(cls)) vehicles += count;
         });
         return { total_people: people, total_vehicles: vehicles };
     }, [alerts]);
+
+    // ── Export Intel as CSV ──────────────────────────────────────────────────
+    const exportToCSV = () => {
+        if (reports.length === 0) return;
+        const header = ['Timestamp', 'Location', 'Class', 'Count'];
+        const rows = reports.flatMap(r =>
+            Object.entries(r.counts as Record<string, number>).map(([cls, count]) =>
+                [r.timestamp, r.location, cls, count].join(',')
+            )
+        );
+        const csv  = [header.join(','), ...rows].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = `bhartiya_seema_intel_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
 
     const [locationNames, setLocationNames] = useState<Record<string, string>>({});
 
@@ -52,23 +70,31 @@ const AdminDashboard: React.FC = () => {
         }));
     }, [alerts, locationNames]);
 
-    // Reverse-geocode each alert's GPS coordinates to a city/state name
+    // Reverse-geocode each alert's GPS coordinates — rate-limited to 1 req/sec (Nominatim policy)
     useEffect(() => {
-        alerts.forEach(alert => {
-            if (alert.location?.lat && alert.location?.lng && !locationNames[alert.id]) {
-                fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${alert.location.lat}&lon=${alert.location.lng}`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data?.address) {
-                            const place = data.address.city || data.address.town || data.address.village || data.address.county || 'Unknown';
-                            const state = data.address.state || data.address.country || '';
-                            setLocationNames(prev => ({ ...prev, [alert.id]: `${place}, ${state}` }));
-                        }
-                    })
-                    .catch(() => {});
-            }
-        });
-    }, [alerts]);
+        const pending = alerts.filter(
+            a => a.location?.lat && a.location?.lng && !locationNames[a.id]
+        );
+        if (pending.length === 0) return;
+
+        let i = 0;
+        const timer = setInterval(() => {
+            if (i >= pending.length) { clearInterval(timer); return; }
+            const alert = pending[i++];
+            fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${alert.location!.lat}&lon=${alert.location!.lng}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data?.address) {
+                        const place = data.address.city || data.address.town || data.address.village || data.address.county || 'Unknown';
+                        const state = data.address.state || data.address.country || '';
+                        setLocationNames(prev => ({ ...prev, [alert.id]: `${place}, ${state}` }));
+                    }
+                })
+                .catch(() => {});
+        }, 1100);  // 1.1 s gap satisfies Nominatim's 1 req/s limit
+
+        return () => clearInterval(timer);
+    }, [alerts]);  // eslint-disable-line react-hooks/exhaustive-deps
 
     const timelineUpdates = useMemo(() => {
         let allUpdates: { id: string; content: string; timestamp: string; status?: string; alertTitle: string }[] = [];
@@ -137,7 +163,7 @@ const AdminDashboard: React.FC = () => {
                             <button onClick={clearAlerts} className="bg-red-600/20 text-red-500 backdrop-blur-md px-5 py-2.5 rounded-lg flex items-center font-bold text-sm shadow-[0_0_15px_rgba(239,68,68,0.2)] hover:bg-red-600/30 hover:shadow-[0_0_25px_rgba(239,68,68,0.4)] border border-red-500/50 transition-all duration-300 uppercase tracking-widest group">
                                 <Trash2 className="h-4 w-4 mr-2 group-hover:rotate-12 transition-transform" /> Clear Feed
                             </button>
-                            <button className="bg-emerald-600/90 text-white backdrop-blur-md px-5 py-2.5 rounded-lg flex items-center font-bold text-sm shadow-[0_0_20px_rgba(5,150,105,0.4)] hover:bg-emerald-500 hover:shadow-[0_0_25px_rgba(16,185,129,0.6)] border border-emerald-400/30 transition-all duration-300 uppercase tracking-widest group">
+                            <button onClick={exportToCSV} className="bg-emerald-600/90 text-white backdrop-blur-md px-5 py-2.5 rounded-lg flex items-center font-bold text-sm shadow-[0_0_20px_rgba(5,150,105,0.4)] hover:bg-emerald-500 hover:shadow-[0_0_25px_rgba(16,185,129,0.6)] border border-emerald-400/30 transition-all duration-300 uppercase tracking-widest group">
                                 <Download className="h-4 w-4 mr-2 group-hover:-translate-y-1 transition-transform" /> Export Intel
                             </button>
                         </div>
