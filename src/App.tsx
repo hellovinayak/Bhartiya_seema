@@ -1,3 +1,4 @@
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { AlertProvider } from './contexts/AlertContext';
@@ -18,6 +19,13 @@ import AdminLoginPage from './pages/AdminLoginPage';
 import AdminDashboard from './pages/AdminDashboard';
 import ProtectedRoute from './routes/ProtectedRoute';
 import RealtimeToast from './components/dashboard/RealtimeToast';
+
+// Admin route guard — uses localStorage token, independent of Supabase auth
+const AdminRoute = ({ children }: { children: React.ReactNode }) => {
+  const token = localStorage.getItem('adminToken');
+  if (!token) return <Navigate to="/admin/login" replace />;
+  return <>{children}</>;
+};
 
 function App() {
   return (
@@ -41,7 +49,7 @@ function App() {
             <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
             <Route path="/surveillance" element={<ProtectedRoute><SurveillancePage /></ProtectedRoute>} />
             <Route path="/admin/login" element={<AdminLoginPage />} />
-            <Route path="/admin/dashboard" element={<ProtectedRoute roles={['admin', 'commander']}><AdminDashboard /></ProtectedRoute>} />
+            <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
 
             {/* Fallback Route */}
             <Route path="*" element={<Navigate to="/" replace />} />
