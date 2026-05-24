@@ -8,6 +8,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  setDoc,
   updateDoc,
   type DocumentData,
   type Unsubscribe,
@@ -25,7 +26,7 @@ import {
   OfficerResponse,
   User,
 } from '../types';
-import { mockAlerts, mockBorderZones, mockIncidents, mockUsers } from '../data/mockData';
+import { mockBorderZones, mockIncidents, mockUsers } from '../data/mockData';
 
 type CollectionName =
   | 'users'
@@ -59,6 +60,24 @@ const createId = (prefix: string) => {
 
 const normalizeLocation = (incident: BorderIncident): GeoLocation | undefined =>
   incident.coordinates || incident.location;
+
+const isSurveillanceAlert = (alert: Alert) => {
+  if (alert.source === 'yolo' || alert.source === 'camera') return true;
+  const signature = `${alert.title} ${alert.message}`.toLowerCase();
+  return signature.includes('yolo') || signature.includes('surveillance') || signature.includes('email alert dispatched');
+};
+
+const sanitizeOperationsState = (state: OperationsState): OperationsState => ({
+  ...state,
+  alerts: state.alerts.filter(isSurveillanceAlert),
+});
+
+const actorNameForSource = (source?: BorderIncident['source']) => {
+  if (source === 'yolo') return 'YOLO Detection Engine';
+  if (source === 'camera') return 'Surveillance Camera';
+  if (source === 'manual') return 'Command Center';
+  return 'System';
+};
 
 const seedCameras = (): Camera[] => [
   {
@@ -112,12 +131,7 @@ const seedState = (): OperationsState => {
       lastSeen: nowIso(),
     })),
     incidents,
-    alerts: mockAlerts.map((alert) => ({
-      ...alert,
-      objectType: alert.title.toLowerCase().includes('drone') ? 'Drone' : 'Person',
-      confidence: 82,
-      zone: alert.title.toLowerCase().includes('drone') ? 'Western Checkpoint Gamma' : 'Northern Sector Alpha',
-    })),
+    alerts: [],
     sectors: mockBorderZones,
     cameras: seedCameras(),
     activityLogs: [
@@ -144,7 +158,12 @@ const readLocalState = (): OperationsState => {
       localStorage.setItem(LOCAL_KEY, JSON.stringify(seeded));
       return seeded;
     }
-    return { ...seedState(), ...JSON.parse(raw) };
+    const parsed = { ...seedState(), ...JSON.parse(raw) };
+    const sanitized = sanitizeOperationsState(parsed);
+    if (sanitized.alerts.length !== parsed.alerts.length) {
+      localStorage.setItem(LOCAL_KEY, JSON.stringify(sanitized));
+    }
+    return sanitized;
   } catch {
     return seedState();
   }
@@ -242,6 +261,32 @@ export const onUsers = (callback: (users: User[]) => void, onError?: (error: Err
   return subscribeLocal('users', () => localState.users, callback);
 };
 
+export const updateUserLocation = async (user: User, location: GeoLocation) => {
+  const patch = {
+    location,
+    online: true,
+    lastSeen: nowIso(),
+  };
+
+  if (isFirebaseConfigured && db) {
+    await setDoc(doc(db, 'users', user.id), withoutUndefined({
+      ...omitId(user),
+      ...patch,
+    }), { merge: true });
+    return;
+  }
+
+  const existing = localState.users.some((item) => item.id === user.id);
+  localState = {
+    ...localState,
+    users: existing
+      ? localState.users.map((item) => item.id === user.id ? { ...item, ...patch } : item)
+      : [{ ...user, ...patch }, ...localState.users],
+  };
+  persist();
+  emit('users');
+};
+
 export const onIncidents = (callback: (incidents: BorderIncident[]) => void, onError?: (error: Error) => void) => {
   if (isFirebaseConfigured) return subscribeFirestore<BorderIncident>('incidents', callback, onError, 'reportedAt');
   return subscribeLocal('incidents', () => [...localState.incidents].sort((a, b) => new Date(b.reportedAt).getTime() - new Date(a.reportedAt).getTime()), callback);
@@ -307,9 +352,9 @@ export const createIncident = async (incidentData: Partial<BorderIncident>) => {
     zone: incidentData.zone || 'Northern Sector Alpha',
     aiConfidence: incidentData.aiConfidence ?? 78,
     severityScore: incidentData.severityScore ?? (severity === 'critical' ? 94 : severity === 'high' ? 78 : 46),
-    source: incidentData.source || 'simulation',
+    source: incidentData.source || 'manual',
     reportedAt: timestamp,
-    reportedBy: incidentData.reportedBy || 'simulation-engine',
+    reportedBy: incidentData.reportedBy || 'command',
     assignedTo: incidentData.assignedTo,
     assignedOfficer: incidentData.assignedOfficer || incidentData.assignedTo,
     media: incidentData.media || [],
@@ -321,20 +366,23 @@ export const createIncident = async (incidentData: Partial<BorderIncident>) => {
   if (isFirebaseConfigured && db) {
     const ref = await addDoc(collection(db, 'incidents'), withoutUndefined(omitId(payload)));
     const incident = { ...payload, id: ref.id };
-    await createAlert({
-      incidentId: ref.id,
-      title: incident.title,
-      message: incident.description,
-      severity: incident.severity,
-      location: incident.coordinates,
-      objectType: incident.objectType,
-      zone: incident.zone,
-      confidence: incident.aiConfidence,
-      status: incident.status,
-    });
+    if (incident.source === 'yolo' || incident.source === 'camera') {
+      await createAlert({
+        incidentId: ref.id,
+        title: incident.title,
+        message: incident.description,
+        severity: incident.severity,
+        source: incident.source,
+        location: incident.coordinates,
+        objectType: incident.objectType,
+        zone: incident.zone,
+        confidence: incident.aiConfidence,
+        status: incident.status,
+      });
+    }
     await addActivityLog({
       actorId: payload.reportedBy,
-      actorName: payload.source === 'yolo' ? 'YOLO Detection Engine' : 'Simulation Engine',
+      actorName: actorNameForSource(payload.source),
       action: `Created ${payload.objectType} incident`,
       targetType: 'incident',
       targetId: ref.id,
@@ -349,20 +397,23 @@ export const createIncident = async (incidentData: Partial<BorderIncident>) => {
   };
   persist();
   emit('incidents');
-  await createAlert({
-    incidentId: payload.id,
-    title: payload.title,
-    message: payload.description,
-    severity: payload.severity,
-    location: payload.coordinates,
-    objectType: payload.objectType,
-    zone: payload.zone,
-    confidence: payload.aiConfidence,
-    status: payload.status,
-  });
+  if (payload.source === 'yolo' || payload.source === 'camera') {
+    await createAlert({
+      incidentId: payload.id,
+      title: payload.title,
+      message: payload.description,
+      severity: payload.severity,
+      source: payload.source,
+      location: payload.coordinates,
+      objectType: payload.objectType,
+      zone: payload.zone,
+      confidence: payload.aiConfidence,
+      status: payload.status,
+    });
+  }
   await addActivityLog({
     actorId: payload.reportedBy,
-    actorName: payload.source === 'yolo' ? 'YOLO Detection Engine' : 'Simulation Engine',
+    actorName: actorNameForSource(payload.source),
     action: `Created ${payload.objectType} incident`,
     targetType: 'incident',
     targetId: payload.id,

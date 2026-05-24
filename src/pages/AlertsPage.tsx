@@ -71,8 +71,8 @@ const AlertsPage: React.FC = () => {
                   ) : (
                     <div className="text-center py-10">
                       <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-3" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-1">All caught up!</h3>
-                      <p className="text-gray-500">You have no unread alerts at this time.</p>
+                      <h3 className="text-lg font-medium text-gray-900 mb-1">No live surveillance alerts</h3>
+                      <p className="text-gray-500">Notifications appear only when the surveillance feed confirms a YOLO/camera detection.</p>
                     </div>
                   )}
                 </div>

@@ -1,6 +1,6 @@
 import React, { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 import { User } from '../types';
-import { getFallbackSession, loginUser, logoutUser, signupUser, watchAuthSession } from '../services/authService';
+import { loginUser, logoutUser, signupUser, watchAuthSession } from '../services/authService';
 
 interface AuthContextType {
   user: User | null;
@@ -16,7 +16,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(() => getFallbackSession());
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 

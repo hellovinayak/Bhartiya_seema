@@ -1,6 +1,6 @@
 import {
-  browserLocalPersistence,
   createUserWithEmailAndPassword,
+  inMemoryPersistence,
   onAuthStateChanged,
   setPersistence,
   signInWithEmailAndPassword,
@@ -47,18 +47,9 @@ const writeStoredUsers = (users: StoredUser[]) => {
   localStorage.setItem(LS_REGISTERED_KEY, JSON.stringify(users));
 };
 
-const persistSession = (user: User | null) => {
-  if (user) localStorage.setItem(LS_SESSION_KEY, JSON.stringify(user));
-  else localStorage.removeItem(LS_SESSION_KEY);
-};
-
-export const getFallbackSession = (): User | null => {
-  try {
-    const raw = localStorage.getItem(LS_SESSION_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+const clearLegacySession = () => {
+  sessionStorage.removeItem(LS_SESSION_KEY);
+  localStorage.removeItem(LS_SESSION_KEY);
 };
 
 const firebaseProfileToUser = async (firebaseUser: FirebaseUser): Promise<User> => {
@@ -93,22 +84,36 @@ const firebaseProfileToUser = async (firebaseUser: FirebaseUser): Promise<User> 
 };
 
 export const watchAuthSession = (callback: (user: User | null) => void) => {
+  clearLegacySession();
+
   if (!isFirebaseConfigured || !auth) {
-    callback(getFallbackSession());
+    callback(null);
     return () => undefined;
   }
 
-  setPersistence(auth, browserLocalPersistence).catch(() => undefined);
-  return onAuthStateChanged(auth, async (firebaseUser) => {
-    callback(firebaseUser ? await firebaseProfileToUser(firebaseUser) : null);
-  });
+  let unsubscribe = () => undefined;
+  let cancelled = false;
+
+  setPersistence(auth, inMemoryPersistence)
+    .then(() => signOut(auth))
+    .catch(() => undefined)
+    .finally(() => {
+      if (cancelled) return;
+      unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+        callback(firebaseUser ? await firebaseProfileToUser(firebaseUser) : null);
+      });
+    });
+
+  return () => {
+    cancelled = true;
+    unsubscribe();
+  };
 };
 
 export const loginUser = async (email: string, password: string): Promise<User> => {
   const normalizedEmail = email.trim().toLowerCase();
 
   if ((normalizedEmail === 'admin' || normalizedEmail === fallbackAdmin.email) && password === 'admin7G') {
-    persistSession(fallbackAdmin);
     return fallbackAdmin;
   }
 
@@ -121,13 +126,11 @@ export const loginUser = async (email: string, password: string): Promise<User> 
     (entry) => entry.user.email.toLowerCase() === normalizedEmail && entry.password === password,
   );
   if (storedMatch) {
-    persistSession(storedMatch.user);
     return storedMatch.user;
   }
 
   const mockMatch = mockUsers.find((user) => user.email.toLowerCase() === normalizedEmail);
   if (mockMatch && password === DEMO_PASSWORD) {
-    persistSession(mockMatch);
     return mockMatch;
   }
 
@@ -174,7 +177,6 @@ export const signupUser = async (userData: Partial<User>, password: string): Pro
   };
   storedUsers.push({ user, password });
   writeStoredUsers(storedUsers);
-  persistSession(user);
   return user;
 };
 
@@ -182,5 +184,5 @@ export const logoutUser = async () => {
   if (isFirebaseConfigured && auth) {
     await signOut(auth);
   }
-  persistSession(null);
+  clearLegacySession();
 };

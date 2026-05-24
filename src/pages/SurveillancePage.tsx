@@ -16,7 +16,7 @@
  *  - Thermal mode (CSS filter)
  *  - FPS counter
  *  - Session stats
- *  - Graceful offline simulation when backend is down
+ *  - Offline preview overlay when backend is down; alert creation stays disabled
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -29,8 +29,7 @@ import AlertToast, { AlertToastData } from '../components/dashboard/AlertToast';
 import { useAlerts } from '../contexts/AlertContext';
 import { useAuth } from '../contexts/AuthContext';
 import { BorderIncident, DetectionLabel, DetectionType } from '../types';
-
-const BACKEND = 'http://localhost:8000';
+import { backendUrl } from '../lib/backend';
 
 // ── Object-type mapping ────────────────────────────────────────────────────────
 const mapDetection = (label: string): {
@@ -83,6 +82,12 @@ const SurveillancePage: React.FC = () => {
   const [dispatchLog,     setDispatchLog]     = useState<any[]>([]);
   const [toastAlerts,     setToastAlerts]     = useState<AlertToastData[]>([]);
 
+  // ── AI Dynamic Configuration State ──────────────────────────────────────────
+  const [modelName,          setModelName]          = useState<string>('yolov8n.pt');
+  const [minConfidence,      setMinConfidence]      = useState<number>(40);
+  const [isUpdatingSettings, setIsUpdatingSettings] = useState<boolean>(false);
+  const [settingsError,      setSettingsError]      = useState<string | null>(null);
+
   const { createIncident } = useAlerts();
   const { user }           = useAuth();
 
@@ -103,7 +108,7 @@ const SurveillancePage: React.FC = () => {
   useEffect(() => {
     const check = async () => {
       try {
-        const r = await fetch(`${BACKEND}/health`);
+        const r = await fetch(backendUrl('/health'));
         setIsBackendReady(r.ok);
       } catch {
         setIsBackendReady(false);
@@ -122,12 +127,56 @@ const SurveillancePage: React.FC = () => {
     };
   }, [stream, videoSourceUrl]);
 
+  // ── Fetch AI Configuration from backend ───────────────────────────────────
+  useEffect(() => {
+    if (!isBackendReady) return;
+    const fetchSettings = async () => {
+      try {
+        const r = await fetch(backendUrl('/settings'));
+        if (r.ok) {
+          const d = await r.json();
+          setModelName(d.model_name);
+          setMinConfidence(Math.round(d.min_confidence * 100));
+        }
+      } catch (err) {
+        console.error('Failed to fetch settings:', err);
+      }
+    };
+    fetchSettings();
+  }, [isBackendReady]);
+
+  // ── Send updated AI Settings to backend ───────────────────────────────────
+  const updateAISettings = async (model: string, confPercent: number) => {
+    if (!isBackendReady) return;
+    setIsUpdatingSettings(true);
+    setSettingsError(null);
+    try {
+      const resp = await fetch(backendUrl('/settings'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model_name: model,
+          min_confidence: Number((confPercent / 100).toFixed(2))
+        })
+      });
+      if (!resp.ok) {
+        const errData = await resp.json();
+        throw new Error(errData.detail || 'Failed to update settings');
+      }
+    } catch (err: any) {
+      setSettingsError(err.message || 'Error updating settings');
+      console.error(err);
+    } finally {
+      setIsUpdatingSettings(false);
+    }
+  };
+
   // ── Session stats polling ──────────────────────────────────────────────────
   useEffect(() => {
     if (!isDetecting || !isBackendReady) return;
     const id = setInterval(async () => {
       try {
-        const r = await fetch(`${BACKEND}/stats`);
+        const r = await fetch(backendUrl('/stats'));
         if (r.ok) setSessionStats(await r.json());
       } catch { /* ignore */ }
     }, 3000);
@@ -162,7 +211,7 @@ const SurveillancePage: React.FC = () => {
         videoRef.current.src       = '';
       }
       // Signal session start to backend
-      fetch(`${BACKEND}/start-detection`, { method: 'POST' }).catch(() => {});
+      fetch(backendUrl('/start-detection'), { method: 'POST' }).catch(() => {});
       setIsDetecting(true);
     } catch (err) {
       console.error('Camera error:', err);
@@ -181,7 +230,7 @@ const SurveillancePage: React.FC = () => {
       videoRef.current.src       = url;
       videoRef.current.onloadedmetadata = () => setIsDetecting(true);
     }
-    fetch(`${BACKEND}/start-detection`, { method: 'POST' }).catch(() => {});
+    fetch(backendUrl('/start-detection'), { method: 'POST' }).catch(() => {});
   };
 
   // ── Alert toast helpers ────────────────────────────────────────────────────
@@ -227,7 +276,7 @@ const SurveillancePage: React.FC = () => {
       isProcessingRef.current = true;
 
       const loc = deviceLocation.current;
-      const url = new URL(`${BACKEND}/detect`);
+      const url = new URL(backendUrl('/detect'));
       if (loc) { url.searchParams.set('lat', String(loc.lat)); url.searchParams.set('lng', String(loc.lng)); }
 
       const form = new FormData();
@@ -331,7 +380,7 @@ const SurveillancePage: React.FC = () => {
     }
   }, [isDetecting, isBackendReady, detectFrame]);
 
-  // Offline simulation (when backend is down)
+  // Offline preview overlay (when backend is down). This never creates alerts.
   useEffect(() => {
     if (!isDetecting || isBackendReady) return;
     const labels = ['Person', 'Car', 'Bike', 'Bird'];
@@ -406,7 +455,7 @@ const SurveillancePage: React.FC = () => {
                     </span>
                     {!isBackendReady && (
                       <span className="text-[10px] bg-yellow-900/50 text-yellow-400 border border-yellow-700 px-2 py-0.5 rounded font-mono">
-                        SIM MODE
+                        AI OFFLINE
                       </span>
                     )}
                   </div>
@@ -431,7 +480,7 @@ const SurveillancePage: React.FC = () => {
                       <input type="file" ref={fileInputRef} onChange={handleVideoUpload} accept="video/*" className="hidden" />
                       {!isBackendReady && (
                         <div className="mt-6 p-3 bg-yellow-900/30 border border-yellow-700/50 rounded text-xs text-yellow-400 font-mono text-center">
-                          ⚠️ YOLO backend offline — simulation mode active<br />
+                          YOLO backend offline — real surveillance alerts disabled<br />
                           <span className="opacity-70">Run: cd backend &amp;&amp; python main.py</span>
                         </div>
                       )}
@@ -512,7 +561,7 @@ const SurveillancePage: React.FC = () => {
                   </h3>
                   {isBackendReady
                     ? <span className="text-[10px] text-green-600 font-bold bg-green-50 border border-green-200 px-2 py-0.5 rounded">YOLOv8 ONLINE</span>
-                    : <span className="text-[10px] text-yellow-600 font-bold bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded">SIM MODE</span>}
+                    : <span className="text-[10px] text-yellow-600 font-bold bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded">AI OFFLINE</span>}
                 </div>
                 <div className="p-5 space-y-4">
                   {isDetecting && (
@@ -554,6 +603,84 @@ const SurveillancePage: React.FC = () => {
                       </div>
                     ))}
                   </div>
+
+                  {/* AI Config & Tuning */}
+                  <div className="border-t border-army-green-100 pt-4 mt-2 space-y-4">
+                    <h4 className="text-xs font-bold text-army-green-700 uppercase tracking-widest border-b border-army-green-100 pb-1 flex justify-between items-center font-headline">
+                      <span>AI Model &amp; Tuning</span>
+                      {isUpdatingSettings && (
+                        <span className="flex items-center space-x-1 text-[10px] text-army-gold font-bold animate-pulse">
+                          <span className="h-1.5 w-1.5 rounded-full bg-army-gold" />
+                          <span>CONFIGURING...</span>
+                        </span>
+                      )}
+                    </h4>
+
+                    {/* Model Dropdown */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-gray-500 uppercase flex justify-between">
+                        <span>YOLOv8 Model Engine</span>
+                        {isBackendReady && (
+                          <span className="text-army-green-700 font-mono font-bold lowercase">
+                            {modelName}
+                          </span>
+                        )}
+                      </label>
+                      <select
+                        value={modelName}
+                        onChange={async (e) => {
+                          const nextModel = e.target.value;
+                          setModelName(nextModel);
+                          await updateAISettings(nextModel, minConfidence);
+                        }}
+                        disabled={isUpdatingSettings || !isBackendReady}
+                        className="w-full text-xs font-medium bg-gray-50 border border-gray-300 rounded p-2 text-army-green-900 focus:ring-1 focus:ring-army-gold focus:border-army-gold focus:outline-none disabled:opacity-55 disabled:cursor-not-allowed transition font-sans"
+                      >
+                        <option value="yolov8n.pt">Nano Model (yolov8n.pt) - Fast</option>
+                        <option value="yolov8s.pt">Small Model (yolov8s.pt) - Recommended</option>
+                        <option value="yolov8m.pt">Medium Model (yolov8m.pt) - High Accuracy</option>
+                        <option value="yolov8l.pt">Large Model (yolov8l.pt) - Maximum Precision</option>
+                      </select>
+                      <p className="text-[9px] text-gray-400 leading-tight">
+                        * Larger models increase precision for small or distant objects, but require more CPU processing time.
+                      </p>
+                    </div>
+
+                    {/* Confidence Threshold Slider */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-bold text-gray-500 uppercase">
+                          Sensitivity Threshold
+                        </label>
+                        <span className="text-xs font-black text-army-green-800 bg-army-gold/30 px-2 py-0.5 rounded font-mono">
+                          {minConfidence}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="20"
+                        max="90"
+                        step="5"
+                        value={minConfidence}
+                        onChange={(e) => setMinConfidence(Number(e.target.value))}
+                        onMouseUp={() => updateAISettings(modelName, minConfidence)}
+                        onTouchEnd={() => updateAISettings(modelName, minConfidence)}
+                        disabled={isUpdatingSettings || !isBackendReady}
+                        className="w-full accent-army-green-700 cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed"
+                      />
+                      <p className="text-[9px] text-gray-400 leading-tight">
+                        * Lower threshold to detect more subtle/distant objects (more alerts); raise it to eliminate false alarms.
+                      </p>
+                    </div>
+
+                    {/* Settings error, if any */}
+                    {settingsError && (
+                      <div className="p-2 text-[10px] bg-red-50 border border-red-200 text-red-700 rounded leading-normal">
+                        ⚠️ <strong>Error:</strong> {settingsError}
+                      </div>
+                    )}
+                  </div>
+
                 </div>
               </div>
 
@@ -592,7 +719,7 @@ const SurveillancePage: React.FC = () => {
                     <div key={entry.id} className="flex gap-3 items-start p-2 border-l-2 border-army-green-600 bg-army-khaki-50/50 rounded-r">
                       {entry.frameUrl && (
                         <img
-                          src={`${BACKEND}${entry.frameUrl}`}
+                          src={backendUrl(entry.frameUrl)}
                           alt="frame"
                           className="w-16 h-12 object-cover rounded border border-gray-200 flex-shrink-0"
                         />

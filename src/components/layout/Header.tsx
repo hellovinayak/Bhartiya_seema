@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LogOut, Home as HomeIcon, LayoutDashboard, FileWarning, MapPin, Eye, User as UserIcon, Menu, X, ShieldCheck, ChevronDown, Bell } from 'lucide-react';
+import { LogOut, Home as HomeIcon, LayoutDashboard, FileWarning, MapPin, Eye, User as UserIcon, Menu, X, ShieldCheck, Shield, ChevronDown, Bell } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAlerts } from '../../contexts/AlertContext';
 
@@ -26,6 +26,14 @@ const Header: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
   const isAuthPage = ['/login', '/signup'].includes(location.pathname);
+  const isAdminRoute = location.pathname.startsWith('/admin');
+  const isHomePage = location.pathname === '/';
+
+  const headerClass = "bg-army-green-800 text-white shadow-army sticky top-0 z-50 border-b-2 border-army-green-700";
+
+  const emblemClass = "relative flex items-center justify-center h-12 w-12 shrink-0 rounded-full bg-army-green-900 border border-army-gold/70 shadow-inner-badge group-hover:scale-110 transition-transform duration-300";
+
+  const logoTextClass = "font-headline font-bold text-xl md:text-2xl tracking-tight text-white block group-hover:text-army-gold transition-colors duration-300";
 
   // Navigation items with icons
   const navItems = [
@@ -37,7 +45,7 @@ const Header: React.FC = () => {
   ];
 
   return (
-    <header className="bg-army-green-800 text-white shadow-army sticky top-0 z-50 border-b-2 border-army-green-700">
+    <header className={headerClass}>
       {/* Indian Tricolour stripe */}
       <div className="stripe-tricolour" aria-hidden="true" />
       <div className="container mx-auto px-4 py-3">
@@ -45,15 +53,16 @@ const Header: React.FC = () => {
         <div className="flex justify-between items-center">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-3 group" onClick={closeMenus}>
-            <div className="flex items-center justify-center h-10 w-10 rounded-full bg-army-green-900 border-2 border-army-gold/60 shadow-inner-badge group-hover:scale-110 transition-transform duration-300">
-              <img
-                src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Emblem_of_India.svg/1200px-Emblem_of_India.svg.png"
-                alt="Emblem of India"
-                className="h-6 w-6 object-contain"
+            <div className={emblemClass}>
+              <span className="absolute inset-1.5 rounded-full border border-army-gold/25" />
+              <Shield
+                className="h-7 w-7 text-army-gold"
+                strokeWidth={2.2}
+                aria-hidden="true"
               />
             </div>
             <div>
-              <span className="font-headline font-bold text-xl md:text-2xl tracking-tight text-white block group-hover:text-army-gold transition-colors duration-300">BHARTIYA SEEMA</span>
+              <span className={logoTextClass}>BHARTIYA SEEMA</span>
             </div>
           </Link>
 
@@ -97,14 +106,14 @@ const Header: React.FC = () => {
                 </div>
               </>
             ) : (
-              !(isAuthPage || location.pathname.startsWith('/admin')) && (
+              !(isAuthPage || isAdminRoute) && (
                 <div className="hidden md:flex items-center space-x-2">
                   <Link to="/login" className="btn btn-secondary text-sm hover:scale-105 transition-transform duration-200" onClick={closeMenus}>Login</Link>
                   <Link to="/signup" className="btn btn-primary text-sm hover:scale-105 transition-transform duration-200" onClick={closeMenus}>Sign Up</Link>
                 </div>
               )
             )}
-            {!isAuthPage && (
+            {!isAuthPage && !isAdminRoute && (!isHomePage || !!user) && (
               <button className="md:hidden focus:outline-none group" onClick={toggleMenu}>
                 {isOpen ? <X className="h-6 w-6 group-hover:rotate-90 transition-transform duration-300" /> : <Menu className="h-6 w-6 group-hover:scale-110 transition-transform duration-300" />}
               </button>
@@ -113,13 +122,13 @@ const Header: React.FC = () => {
         </div>
 
         {/* Bottom Row: Navigation - Below Logo, Left Aligned */}
-        {!isAuthPage && (
+        {!isAuthPage && !isAdminRoute && (!isHomePage || !!user) && (
           <nav className="hidden md:flex items-center space-x-1 mt-3 pt-3 border-t border-army-green-700/50">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isItemActive = isActive(item.path);
               let showItem = !item.requiresAuth || !!user;
-              if ((user || location.pathname.startsWith('/admin')) && item.label === 'Home') {
+              if ((user || isAdminRoute || isHomePage) && item.label === 'Home') {
                 showItem = false;
               }
 
@@ -146,7 +155,7 @@ const Header: React.FC = () => {
                 </Link>
               );
             })}
-            {!user && !location.pathname.startsWith('/admin') && (
+            {!user && !isAdminRoute && !isHomePage && (
               <Link
                 to="/admin/login"
                 className={`
@@ -167,14 +176,14 @@ const Header: React.FC = () => {
         )}
 
         {/* Mobile Menu */}
-        {!isAuthPage && isOpen && (
+        {!isAuthPage && !isAdminRoute && (!isHomePage || !!user) && isOpen && (
           <div className="md:hidden pt-4 pb-3 border-t border-army-green-700 mt-3 animate-fade-in">
             <nav className="flex flex-col space-y-2">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const isItemActive = isActive(item.path);
                 let showItem = !item.requiresAuth || !!user;
-                if ((user || location.pathname.startsWith('/admin')) && item.label === 'Home') {
+                if ((user || isAdminRoute || isHomePage) && item.label === 'Home') {
                   showItem = false;
                 }
                 if (!showItem) return null;
@@ -190,7 +199,7 @@ const Header: React.FC = () => {
                   </Link>
                 );
               })}
-              {!user && !location.pathname.startsWith('/admin') && (
+              {!user && !isAdminRoute && !isHomePage && (
                 <Link to="/admin/login" className={`px-4 py-3 rounded-lg flex items-center space-x-3 transition-all duration-300 ${isActive('/admin/login') ? 'bg-army-green-900 text-army-gold border-l-4 border-army-gold' : 'hover:bg-army-green-700 text-army-gold'}`} onClick={closeMenus}>
                   <ShieldCheck className="h-5 w-5" />
                   <span className="font-medium">Command Center</span>
@@ -208,7 +217,7 @@ const Header: React.FC = () => {
                   </button>
                 </>
               ) : (
-                !(['/login', '/signup'].includes(location.pathname) || location.pathname.startsWith('/admin')) && (
+                !(['/login', '/signup'].includes(location.pathname) || isAdminRoute) && (
                   <>
                     <Link to="/login" className="px-4 py-3 rounded-lg hover:bg-army-green-700 text-army-khaki-100" onClick={closeMenus}>Login</Link>
                     <Link to="/signup" className="px-4 py-3 rounded-lg hover:bg-army-green-700 text-army-khaki-100" onClick={closeMenus}>Sign Up</Link>

@@ -178,10 +178,6 @@
   100% { transform: scale(1.9); opacity: 0; }
 }
 
-.map-dark .leaflet-tile {
-  filter: invert(92%) hue-rotate(175deg) saturate(65%) brightness(78%) contrast(95%);
-}
-
 .scan-line::after {
   content: '';
   position: absolute;

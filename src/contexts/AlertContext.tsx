@@ -14,9 +14,9 @@ import {
   onSectors,
   onUsers,
   updateIncident,
+  updateUserLocation,
 } from '../services/firestoreService';
-import { createSimulatedIncidentPayload, playAlertTone } from '../services/simulationService';
-import { isFirebaseConfigured } from '../firebase/firebase';
+import { playAlertTone } from '../services/simulationService';
 
 interface AlertContextType {
   alerts: Alert[];
@@ -28,7 +28,6 @@ interface AlertContextType {
   unreadCount: number;
   loading: boolean;
   error: string | null;
-  simulationEnabled: boolean;
   soundEnabled: boolean;
   markAsRead: (alertId: string) => void;
   markAllAsRead: () => void;
@@ -39,11 +38,10 @@ interface AlertContextType {
   updateAlert: (id: string, updates: any[], status: string) => Promise<void>;
   createIncident: (incident: Partial<BorderIncident>) => Promise<BorderIncident>;
   updateIncident: (id: string, updates: Partial<BorderIncident>) => Promise<void>;
+  updateUserLocation: typeof updateUserLocation;
   deleteIncident: (id: string) => Promise<void>;
-  createSimulatedDetection: () => Promise<BorderIncident>;
   addOfficerResponse: typeof addOfficerResponse;
   retry: () => void;
-  toggleSimulation: () => void;
   toggleSound: () => void;
 }
 
@@ -59,9 +57,13 @@ export const AlertProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
-  const [simulationEnabled, setSimulationEnabled] = useState(() => !isFirebaseConfigured);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const lastAlertId = useRef<string | null>(null);
+
+  const isSurveillanceAlert = (alert: Alert) =>
+    alert.source === 'yolo' ||
+    alert.source === 'camera' ||
+    `${alert.title} ${alert.message}`.toLowerCase().includes('yolo');
 
   useEffect(() => {
     setLoading(true);
@@ -73,7 +75,7 @@ export const AlertProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const unsubscribers = [
       onAlerts((items) => {
-        setAlerts(items);
+        setAlerts(items.filter(isSurveillanceAlert));
         setLoading(false);
       }, handleError),
       onIncidents(setIncidents, handleError),
@@ -93,14 +95,6 @@ export const AlertProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (soundEnabled && !newest.read) playAlertTone();
   }, [alerts, soundEnabled]);
 
-  useEffect(() => {
-    if (!simulationEnabled) return undefined;
-    const interval = window.setInterval(() => {
-      createIncident(createSimulatedIncidentPayload()).catch((err) => setError(err.message));
-    }, 45000);
-    return () => window.clearInterval(interval);
-  }, [simulationEnabled]);
-
   const unreadCount = alerts.filter((alert) => !alert.read).length;
 
   const markAsRead = (alertId: string) => {
@@ -116,8 +110,6 @@ export const AlertProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const getIncidentDetails = (incidentId: string) =>
     incidents.find((incident) => incident.id === incidentId || incident.id === alerts.find((alert) => alert.id === incidentId)?.incidentId);
 
-  const createSimulatedDetection = async () => createIncident(createSimulatedIncidentPayload());
-
   const value = useMemo<AlertContextType>(() => ({
     alerts,
     incidents,
@@ -128,7 +120,6 @@ export const AlertProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     unreadCount,
     loading,
     error,
-    simulationEnabled,
     soundEnabled,
     markAsRead,
     markAllAsRead,
@@ -143,13 +134,12 @@ export const AlertProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     },
     createIncident,
     updateIncident,
+    updateUserLocation,
     deleteIncident,
-    createSimulatedDetection,
     addOfficerResponse,
     retry: () => setReloadToken((token) => token + 1),
-    toggleSimulation: () => setSimulationEnabled((enabled) => !enabled),
     toggleSound: () => setSoundEnabled((enabled) => !enabled),
-  }), [activityLogs, alerts, cameras, error, incidents, loading, officers, sectors, simulationEnabled, soundEnabled, unreadCount]);
+  }), [activityLogs, alerts, cameras, error, incidents, loading, officers, sectors, soundEnabled, unreadCount]);
 
   return (
     <AlertContext.Provider value={value}>

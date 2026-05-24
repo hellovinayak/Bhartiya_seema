@@ -140,8 +140,7 @@ const AuthPage: React.FC = () => {
                       </button>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <label className="flex items-center gap-2 text-gray-600"><input type="checkbox" className="rounded" /> Remember me</label>
+                  <div className="flex justify-end text-sm">
                     <a href="#" className="text-army-green-600 hover:underline">Forgot password?</a>
                   </div>
                   <button type="submit" className="btn w-full bg-saffron hover:bg-orange-600 text-white font-semibold rounded-lg" disabled={loading}>

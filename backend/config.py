@@ -1,3 +1,4 @@
+from __future__ import annotations
 # ──────────────────────────────────────────────────────────────────────────────
 # backend/config.py
 # Centralised environment-variable configuration.
@@ -32,11 +33,11 @@ class Config:
 
     # ── CORS ──────────────────────────────────────────────────────────────────
     ALLOWED_ORIGINS: list[str] = os.environ.get(
-        "ALLOWED_ORIGINS", "http://localhost:5173"
+        "ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
     ).split(",")
 
     # ── Detection ─────────────────────────────────────────────────────────────
-    MIN_CONFIDENCE:        float = float(os.environ.get("MIN_CONFIDENCE", "0.70"))
+    MIN_CONFIDENCE:        float = float(os.environ.get("MIN_CONFIDENCE", "0.40"))
     ALERT_COOLDOWN_SECS:   int   = int(os.environ.get("ALERT_COOLDOWN_SECS", "60"))
     YOLO_MODEL:            str   = os.environ.get("YOLO_MODEL", "yolov8n.pt")
 

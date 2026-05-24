@@ -24,7 +24,7 @@ export interface BorderIncident {
   coordinates?: GeoLocation;
   severity: 'low' | 'medium' | 'high' | 'critical';
   priority?: 'low' | 'medium' | 'high' | 'critical';
-  status: 'reported' | 'investigating' | 'resolved' | 'false-alarm';
+  status: 'reported' | 'under-review' | 'officer-assigned' | 'patrol-dispatched' | 'resolved' | 'false-alarm';
   type?: DetectionType;
   objectType?: DetectionLabel;
   zone?: string;
@@ -71,6 +71,7 @@ export interface Alert {
   title: string;
   message: string;
   severity: BorderIncident['severity'];
+  source?: BorderIncident['source'];
   timestamp: string;
   read: boolean;
   location?: GeoLocation;

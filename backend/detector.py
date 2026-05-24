@@ -1,3 +1,4 @@
+from __future__ import annotations
 # ──────────────────────────────────────────────────────────────────────────────
 # backend/detector.py
 # YOLOv8 object detection engine.
@@ -8,6 +9,7 @@
 import cv2
 import numpy as np
 import os
+import threading
 from datetime import datetime
 from ultralytics import YOLO
 
@@ -42,16 +44,45 @@ CLASS_COLORS: dict[str, tuple[int, int, int]] = {
 class ObjectDetector:
     """
     Wraps a YOLOv8 model and exposes a single `detect()` method.
-    Thread-safe for concurrent requests because YOLO inference is GIL-bound.
+    Thread-safe for concurrent requests and dynamic model switching.
     """
 
     def __init__(self) -> None:
-        model_path = os.path.join(os.path.dirname(__file__), cfg.YOLO_MODEL)
+        self.lock = threading.Lock()
+        self.model_name = cfg.YOLO_MODEL
+        self.min_confidence = cfg.MIN_CONFIDENCE
+        self._load_model_weights(self.model_name)
+
+    def _load_model_weights(self, model_name: str) -> None:
+        """Loads/downloads the model weights. Internal helper; call under lock or during init."""
+        model_path = os.path.join(os.path.dirname(__file__), model_name)
         if not os.path.exists(model_path):
             # Let Ultralytics auto-download to the default cache
-            model_path = cfg.YOLO_MODEL
+            model_path = model_name
         self.model = YOLO(model_path)
         print(f"✅ YOLOv8 model loaded: {model_path}")
+
+    def update_settings(self, model_name: str | None = None, min_confidence: float | None = None) -> dict:
+        """
+        Dynamically and thread-safely update model size or confidence threshold.
+        If a new model_name is provided, it downloads and loads it on-the-fly.
+        """
+        with self.lock:
+            reloaded = False
+            if model_name and model_name != self.model_name:
+                print(f"🔄 Dynamic switch requested: {self.model_name} -> {model_name}")
+                self._load_model_weights(model_name)
+                self.model_name = model_name
+                reloaded = True
+            
+            if min_confidence is not None:
+                self.min_confidence = min_confidence
+            
+            return {
+                "model_name": self.model_name,
+                "min_confidence": self.min_confidence,
+                "reloaded": reloaded,
+            }
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
@@ -79,14 +110,19 @@ class ObjectDetector:
         counts:      dict[str, int] = {}
         alert_triggered = False
 
-        for result in self.model(img, stream=True, verbose=False):
+        # Run inference under lock to prevent dynamic model switching race conditions
+        with self.lock:
+            results = list(self.model(img, stream=True, verbose=False))
+            class_names = dict(self.model.names)
+
+        for result in results:
             for box in result.boxes:
                 conf = float(box.conf[0])
-                if conf < cfg.MIN_CONFIDENCE:
+                if conf < self.min_confidence:
                     continue
 
                 cls_id  = int(box.cls[0])
-                name    = self.model.names[cls_id]
+                name    = class_names.get(cls_id, "unknown")
                 x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
                 is_alert = name in TARGET_CLASSES
 

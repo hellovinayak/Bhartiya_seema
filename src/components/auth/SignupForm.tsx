@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, Lock, User, UserPlus, MapPin, AlertCircle } from 'lucide-react';
+import { Mail, Lock, User, UserPlus, MapPin, AlertCircle, Shield } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -92,11 +92,10 @@ const SignupForm: React.FC = () => {
     <div className="bg-white rounded-lg shadow-army overflow-hidden max-w-md w-full border border-army-khaki-200">
       <div className="stripe-tricolour" aria-hidden="true" />
       <div className="bg-army-green-800 p-6 flex flex-col items-center border-b-2 border-army-green-700">
-        <img
-          src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Emblem_of_India.svg/1200px-Emblem_of_India.svg.png"
-          alt="State Emblem of India"
-          className="h-12 w-12 mb-2 object-contain"
-        />
+        <div className="relative mb-2 flex h-14 w-14 items-center justify-center rounded-full border border-army-gold/70 bg-army-green-900 shadow-inner-badge">
+          <span className="absolute inset-1.5 rounded-full border border-army-gold/25" />
+          <Shield className="h-7 w-7 text-army-gold" strokeWidth={2.2} aria-hidden="true" />
+        </div>
         <h2 className="text-white text-xl font-bold font-headline tracking-tight">BHARTIYA SEEMA</h2>
         <p className="text-army-khaki-200 text-xs mt-1 uppercase tracking-wider">Officer Registration Portal</p>
       </div>

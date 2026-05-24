@@ -1,3 +1,4 @@
+from __future__ import annotations
 # ──────────────────────────────────────────────────────────────────────────────
 # backend/main.py
 # FastAPI application entry-point.
@@ -18,8 +19,9 @@ import hashlib
 import os
 import secrets
 from datetime import datetime, timedelta
+from typing import Optional
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -50,6 +52,20 @@ app.mount(
     StaticFiles(directory=cfg.FRAMES_DIR),
     name="frames",
 )
+
+# ── Active WebSocket Connections Pool ──────────────────────────────────────────
+active_connections: list[WebSocket] = []
+
+async def broadcast_detection(event_data: dict):
+    """Send detection coordinate events to all connected clients."""
+    for connection in list(active_connections):
+        try:
+            await connection.send_json(event_data)
+        except Exception:
+            try:
+                active_connections.remove(connection)
+            except ValueError:
+                pass
 
 # ── Singletons ─────────────────────────────────────────────────────────────────
 try:
@@ -94,6 +110,23 @@ def _mark_alerted(cls_name: str) -> None:
 # ROUTES
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ── WebSockets Broadcast ──────────────────────────────────────────────────────
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    active_connections.append(websocket)
+    try:
+        while True:
+            # Keep client connection open by receiving any text (e.g. heartbeat)
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        if websocket in active_connections:
+            active_connections.remove(websocket)
+    except Exception:
+        if websocket in active_connections:
+            active_connections.remove(websocket)
+
 # ── Health ────────────────────────────────────────────────────────────────────
 
 @app.get("/health", tags=["System"])
@@ -137,8 +170,8 @@ async def start_detection():
 @app.post("/detect", tags=["Detection"])
 async def detect_objects(
     file: UploadFile = File(...),
-    lat:  float | None = Query(None, description="Device latitude"),
-    lng:  float | None = Query(None, description="Device longitude"),
+    lat:  Optional[float] = Query(None, description="Device latitude"),
+    lng:  Optional[float] = Query(None, description="Device longitude"),
 ):
     """
     Accept a JPEG frame from the browser, run YOLOv8 inference, and return:
@@ -210,6 +243,17 @@ async def detect_objects(
     if alert_triggered:
         await _handle_alerts()
 
+    # ── Real-time WebSocket coordinate broadcast ──────────────────────────────
+    if predictions and location:
+        event_data = {
+            "type": "detection",
+            "timestamp": datetime.utcnow().isoformat(),
+            "location": location,
+            "predictions": predictions,
+            "counts": counts,
+        }
+        asyncio.create_task(broadcast_detection(event_data))
+
     return {
         "status":          "success",
         "counts":          counts,
@@ -277,6 +321,66 @@ async def login(data: dict):
         return {"status": "success", "role": "admin", "token": token}
 
     raise HTTPException(status_code=401, detail="Invalid credentials")
+
+
+# ── AI Detection Configuration ────────────────────────────────────────────────
+
+@app.get("/settings", tags=["System"])
+async def get_settings():
+    """Get the current YOLOv8 model size and confidence threshold."""
+    if not MODEL_OK or detector is None:
+        raise HTTPException(status_code=503, detail="YOLOv8 model not available.")
+    
+    return {
+        "model_name": detector.model_name,
+        "min_confidence": detector.min_confidence,
+        "available_models": [
+            {"id": "yolov8n.pt", "name": "Nano (yolov8n.pt)", "description": "Fastest, lower accuracy, good for weak hardware"},
+            {"id": "yolov8s.pt", "name": "Small (yolov8s.pt)", "description": "Great balance of speed and detection accuracy"},
+            {"id": "yolov8m.pt", "name": "Medium (yolov8m.pt)", "description": "High accuracy, moderate resource usage"},
+            {"id": "yolov8l.pt", "name": "Large (yolov8l.pt)", "description": "Excellent accuracy, resource heavy"}
+        ]
+    }
+
+
+@app.post("/settings", tags=["System"])
+async def update_settings(data: dict):
+    """Update the YOLOv8 model and/or confidence threshold dynamically."""
+    if not MODEL_OK or detector is None:
+        raise HTTPException(status_code=503, detail="YOLOv8 model not available.")
+    
+    model_name = data.get("model_name")
+    min_confidence = data.get("min_confidence")
+    
+    # Validation
+    if min_confidence is not None:
+        try:
+            min_confidence = float(min_confidence)
+            if not (0.10 <= min_confidence <= 0.95):
+                raise ValueError()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Confidence threshold must be a float between 0.10 and 0.95")
+            
+    if model_name is not None:
+        allowed_models = ["yolov8n.pt", "yolov8s.pt", "yolov8m.pt", "yolov8l.pt"]
+        if model_name not in allowed_models:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported model. Choose one of: {', '.join(allowed_models)}"
+            )
+
+    try:
+        updated = detector.update_settings(
+            model_name=model_name,
+            min_confidence=min_confidence
+        )
+        return {
+            "status": "success",
+            "message": "Settings updated successfully",
+            "settings": updated
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to apply settings: {exc}")
 
 
 # ── Entry-point ───────────────────────────────────────────────────────────────

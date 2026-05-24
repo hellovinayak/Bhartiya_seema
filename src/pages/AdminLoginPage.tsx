@@ -4,6 +4,7 @@ import { Shield, Lock, User, ArrowRight, ArrowLeft } from 'lucide-react';
 import Header from '../components/layout/Header';
 import Footer from '../components/layout/Footer';
 import { useAuth } from '../contexts/AuthContext';
+import { backendUrl } from '../lib/backend';
 
 const AdminLoginPage: React.FC = () => {
     const [username, setUsername] = useState('');
@@ -26,11 +27,11 @@ const AdminLoginPage: React.FC = () => {
         }
 
         // Credentials correct — grant access immediately
-        localStorage.setItem('adminToken', 'local-admin-token');
+        sessionStorage.setItem('adminToken', 'local-admin-token');
 
         // ── Optionally upgrade to a real backend token (fire-and-forget) ─────
         try {
-            const response = await fetch('http://localhost:8000/login', {
+            const response = await fetch(backendUrl('/login'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password }),
@@ -38,7 +39,7 @@ const AdminLoginPage: React.FC = () => {
             });
             const data = await response.json();
             if (data.status === 'success' && data.token) {
-                localStorage.setItem('adminToken', data.token);
+                sessionStorage.setItem('adminToken', data.token);
             }
         } catch (_) {
             // Backend offline — local token is fine

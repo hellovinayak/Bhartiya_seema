@@ -6,6 +6,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, X, ShieldAlert } from 'lucide-react';
+import { backendUrl } from '../../lib/backend';
 
 export interface AlertToastData {
   id:          string;
@@ -28,8 +29,6 @@ const SEVERITY_COLOR: Record<string, string> = {
   motorcycle: 'from-yellow-900/95 border-yellow-500',
   _default:   'from-slate-900/95 border-slate-500',
 };
-
-const BACKEND = 'http://localhost:8000';
 
 const AlertToast: React.FC<Props> = ({ alerts, onDismiss }) => {
   return (
@@ -59,7 +58,7 @@ const SingleToast: React.FC<{ alert: AlertToastData; onDismiss: (id: string) => 
   }, [alert.id, onDismiss]);
 
   const colorClass = SEVERITY_COLOR[alert.cls] ?? SEVERITY_COLOR._default;
-  const frameUrl   = alert.frameUrl ? `${BACKEND}${alert.frameUrl}` : null;
+  const frameUrl   = alert.frameUrl ? backendUrl(alert.frameUrl) : null;
 
   return (
     <div

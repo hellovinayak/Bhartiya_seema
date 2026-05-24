@@ -4,7 +4,6 @@ import { AuthProvider } from './contexts/AuthContext';
 import { AlertProvider } from './contexts/AlertContext';
 
 // Pages
-import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage'; // Now AuthPage (combined)
 // SignupPage is merged into LoginPage (AuthPage)
 import DashboardPage from './pages/DashboardPage';
@@ -18,11 +17,10 @@ import SurveillancePage from './pages/SurveillancePage';
 import AdminLoginPage from './pages/AdminLoginPage';
 import AdminDashboard from './pages/AdminDashboard';
 import ProtectedRoute from './routes/ProtectedRoute';
-import RealtimeToast from './components/dashboard/RealtimeToast';
 
-// Admin route guard — uses localStorage token, independent of Supabase auth
+// Admin route guard — uses sessionStorage token, independent of Supabase auth
 const AdminRoute = ({ children }: { children: React.ReactNode }) => {
-  const token = localStorage.getItem('adminToken');
+  const token = sessionStorage.getItem('adminToken');
   if (!token) return <Navigate to="/admin/login" replace />;
   return <>{children}</>;
 };
@@ -32,10 +30,9 @@ function App() {
     <AuthProvider>
       <AlertProvider>
         <Router>
-          <RealtimeToast />
           <Routes>
             {/* Public Routes */}
-            <Route path="/" element={<HomePage />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<LoginPage />} />
 
@@ -52,7 +49,7 @@ function App() {
             <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
 
             {/* Fallback Route */}
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </Router>
       </AlertProvider>

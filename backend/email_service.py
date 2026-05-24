@@ -1,3 +1,4 @@
+from __future__ import annotations
 # ──────────────────────────────────────────────────────────────────────────────
 # backend/email_service.py
 # Async email alert service.

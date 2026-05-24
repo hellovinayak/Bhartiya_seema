@@ -13,13 +13,20 @@ const IncidentCard: React.FC<IncidentCardProps> = ({ incident }) => {
   const getStatusBadge = (status: BorderIncident['status']) => {
     switch (status) {
       case 'reported':
-        return <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">Reported</span>;
-      case 'investigating':
-        return <span className="bg-yellow-100 text-yellow-800 text-xs font-semibold px-2.5 py-0.5 rounded">Investigating</span>;
+        return <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">NEW</span>;
+      case 'under-review':
+        return <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-2.5 py-0.5 rounded">UNDER REVIEW</span>;
+      case 'officer-assigned':
+        return <span className="bg-teal-100 text-teal-800 text-xs font-semibold px-2.5 py-0.5 rounded">OFFICER ASSIGNED</span>;
+      case 'patrol-dispatched':
+        return <span className="bg-rose-100 text-rose-800 text-xs font-bold px-2.5 py-0.5 rounded animate-pulse">PATROL DISPATCHED</span>;
+      // keep for backward compatibility
+      case 'investigating' as any:
+        return <span className="bg-yellow-100 text-yellow-800 text-xs font-semibold px-2.5 py-0.5 rounded">INVESTIGATING</span>;
       case 'resolved':
-        return <span className="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded">Resolved</span>;
+        return <span className="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded">RESOLVED</span>;
       case 'false-alarm':
-        return <span className="bg-gray-100 text-gray-800 text-xs font-semibold px-2.5 py-0.5 rounded">False Alarm</span>;
+        return <span className="bg-gray-100 text-gray-800 text-xs font-semibold px-2.5 py-0.5 rounded">FALSE ALARM</span>;
       default:
         return null;
     }
@@ -48,7 +55,7 @@ const IncidentCard: React.FC<IncidentCardProps> = ({ incident }) => {
     return 'Command System';
   };
 
-  const hasUpdates = incident.updates.length > 0;
+  const hasUpdates = incident.updates && incident.updates.length > 0;
   const latestUpdate = hasUpdates ? incident.updates[incident.updates.length - 1] : null;
 
   return (
