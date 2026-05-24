@@ -42,6 +42,7 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 
 ### 1. Starting the Frontend
 ```bash
+cd frontend
 npm install
 npm run dev
 ```
